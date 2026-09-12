@@ -408,11 +408,15 @@ export function validate(root, options = {}) {
     .map((match) => Number(match[1]))
     .sort((a, b) => a - b)
   const roundGaps = roundFiles.some((value, index) => value !== index + 1)
-  const roundMatches = state === null ? true : state.round === roundFiles.length
+  add('rounds.sequence', !roundGaps, `轮次文件必须从 round-001.md 连续编号（现在 ${roundFiles.length} 个文件）`)
+  // `state.round` is derived bookkeeping, not a judgment about the discussion.
+  // The first version made a mismatch a blocker, which turned a one-line slip
+  // into a stuck stage; it is a warning now, and the gate tool re-syncs it.
   add(
-    'rounds.sequence',
-    !roundGaps && roundMatches,
-    `轮次文件应从 round-001.md 连续编号，且 state.round 等于轮次文件数（现在 ${roundFiles.length} 个文件，state.round=${String(state?.round)}）`,
+    'rounds.state-sync',
+    state === null || state.round === roundFiles.length,
+    `state.round=${String(state?.round)} 与轮次文件数 ${roundFiles.length} 不一致（机械记账：check / advance 时会自动同步，不必手改）`,
+    'warn',
   )
 
   // ── open questions decide whether this stage may be left ─────────────────
@@ -732,6 +736,12 @@ export function renderReport(report) {
   } else {
     lines.push(`门禁: FAIL — 还缺 ${report.blockers.length} 项`)
     for (const blocker of report.blockers) lines.push(`  ✗ ${blocker.id}: ${blocker.detail}`)
+  }
+  // Warning-level checks exist so mechanical drift can be reported without
+  // blocking a stage; they were computed but never printed until a test caught
+  // it, so they are rendered in both the PASS and the FAIL case.
+  for (const warning of report.checks.filter((check) => !check.ok && check.level !== 'block')) {
+    lines.push(`  ! ${warning.id}: ${warning.detail}`)
   }
   if (report.ok && report.nextStage !== undefined) {
     lines.push(`下一步: apical_gate action=advance（把 stage 推进到 ${report.nextStage}）`)

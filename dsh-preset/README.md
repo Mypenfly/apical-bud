@@ -8,7 +8,7 @@
 |---|---|
 | `agent.cordis.yml` | 常驻 persona（三条承重规则、阶段机、调研的从属地位、术语纪律、质疑与否决条款）+ 裁剪过的工具集 + 本 preset 的本地插件行 |
 | `apical-gate.mjs` | 注册 `apical_gate` 工具：`status` / `check` / `advance` / `verdict`。它是 `state.json.stage` 的**唯一合法写入者**，出口条件不通过就拒绝推进（含从种子到顶芽的推演链回溯） |
-| `apical-guard.mjs` | 单调写守卫 + 每轮状态横幅：`write`/`edit` 只允许写讨论根；用户原话与既有轮次纪要只追加；`state.json.stage`/`verdict` 不许手改；横幅每条用户消息注入一次真实进度（阶段、树规模、待确认术语、门禁结果） |
+| `apical-guard.mjs` | 单调写守卫 + 每轮状态横幅：`write`/`edit` 只允许写讨论根；**答复之前不许新建讨论文件**（对话是介质、文件是留痕）；用户原话与既有轮次纪要只追加；`state.json.stage`/`verdict` 不许手改；横幅每条用户消息注入一次真实进度（阶段、树规模、待确认术语、门禁结果） |
 | `lib/apical-state.mjs` | 两个插件共用的同步状态读取（守卫必须在工具执行前同步判定） |
 | `selftest.mjs` | 零依赖自检：mock Cordis 上下文挂载两个插件，跑 45 项断言（含 S0→S7 全程推进、孤儿节点、断链、术语墙、append-only） |
 

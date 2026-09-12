@@ -12,7 +12,7 @@
  * The fixture is written under `./.selftest/` and removed on success.
  */
 
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -161,7 +161,7 @@ async function main() {
 
   const gateTool = tools.find((definition) => definition.name === 'apical_gate')
   const call = (args) => gateTool.execute(args, { agent: fakeAgent().agent, signal: new AbortController().signal })
-  const guardCheck = (name, args) => guards[0]({ name, arguments: args, agent: fakeAgent().agent, callId: 'c1', token: 't1', signal: new AbortController().signal })
+  const guardCheck = (name, args, agent) => guards[0]({ name, arguments: args, agent: agent ?? fakeAgent().agent, callId: 'c1', token: 't1', signal: new AbortController().signal })
   const banner = async (session) => {
     const decision = await listeners.get('agent/pre-step')[0]({ agent: { session, parentAgent: undefined }, signal: new AbortController().signal }, async () => ({ messages: [] }))
     return decision.messages
@@ -344,6 +344,45 @@ seed → L-002 → N-001 → N-003
   ok('失败时给出三条修法', reportC.text.includes('gateScript') && reportC.text.includes('APICAL_GATE_SCRIPT') && reportC.text.includes('skills/apical-bud'), reportC.text.split('\n').slice(-1)[0].slice(0, 80))
   if (previousHome === undefined) delete process.env.DSH_HOME
   else process.env.DSH_HOME = previousHome
+
+  process.stdout.write('\n[11] 讨论先行：答复之前不得新建讨论文件\n')
+  const sessionWith = (events) => {
+    const holder = fakeAgent()
+    holder.session.events.push(...events)
+    return holder.agent
+  }
+  const userMsg = (text) => ({ type: 'user/message', data: { source: { kind: 'user' }, content: [{ type: 'text', text }] } })
+  const askedCall = (callId) => ({ type: 'tool/call', data: { name: 'ask_user_question', callId, arguments: {} } })
+  const answered = (callId) => ({ type: 'tool/result', data: { message: { source: { kind: 'tool', callId } } } })
+  const wroteCall = (callId, path) => ({ type: 'tool/call', data: { name: 'write', callId, arguments: { file_path: path } } })
+  const newLayer = { file_path: 'design/paper-ink/layers/L-009-new.md', content: 'x' }
+
+  ok('答复之前新建层文件被拦下', typeof guardCheck('write', newLayer, sessionWith([userMsg('我想聊聊这个前端')])) === 'string')
+  ok('提问但未答复时仍被拦下', typeof guardCheck('write', newLayer, sessionWith([userMsg('我想聊聊这个前端'), askedCall('q1')])) === 'string')
+  ok('拿到答复后允许落盘', guardCheck('write', newLayer, sessionWith([userMsg('我想聊聊这个前端'), askedCall('q1'), answered('q1')])) === undefined)
+  ok('上一轮答复后又写过 → 新提案仍被拦下', typeof guardCheck('write', newLayer, sessionWith([userMsg('继续'), askedCall('q1'), answered('q1'), wroteCall('w1', 'design/paper-ink/seed/real-need.md')])) === 'string')
+  ok('用户明确要求记录时放行', guardCheck('write', newLayer, sessionWith([userMsg('把刚才说的这两层记录进文件')])) === undefined)
+  ok('账本：轮次纪要不受限制', guardCheck('write', { file_path: 'design/paper-ink/rounds/round-009.md', content: 'x' }, sessionWith([userMsg('…')])) === undefined)
+  // 用户原话已存在时会先撞上 append-only 规则，所以先挪开再测「首次创建」这条豁免。
+  renameSync(join(root, 'seed/R-000-original.md'), join(root, 'seed/.R-000.bak'))
+  ok('账本：用户原话首次创建不受限制', guardCheck('write', { file_path: 'design/paper-ink/seed/R-000-original.md', content: 'x' }, sessionWith([userMsg('…')])) === undefined)
+  renameSync(join(root, 'seed/.R-000.bak'), join(root, 'seed/R-000-original.md'))
+  ok('账本：audit/ 下的记录不受限制', guardCheck('write', { file_path: 'design/paper-ink/audit/notes.md', content: 'x' }, sessionWith([userMsg('…')])) === undefined)
+  // state.json 的内容必须与盘上一致，否则先撞上 stage/verdict 不变量（那是另一条规则）。
+  const currentState = readFileSync(join(root, 'state.json'), 'utf8')
+  ok('账本：state.json 不受限制', guardCheck('write', { file_path: 'design/paper-ink/state.json', content: currentState }, sessionWith([userMsg('…')])) === undefined)
+  ok('修正既有文件不受此规则限制', guardCheck('edit', { file_path: 'design/paper-ink/layers/L-001-visual.md', old_string: 'a', new_string: 'b' }, sessionWith([userMsg('第 2 条判据错了')])) === undefined)
+  ok('横幅提醒对话先行', (await banner(fakeAgent().session)).some((message) => message.content[0].text.includes('对话先行')))
+
+  process.stdout.write('\n[12] 机械记账：state.round 只提醒、且被自动同步\n')
+  const drifted = state()
+  drifted.stage = 'S1'
+  drifted.round = 0
+  writeState(drifted)
+  const driftCheck = await call({ action: 'check' })
+  ok('state.round 不一致不再阻塞阶段', driftCheck.text.includes('! rounds.state-sync') && !driftCheck.text.includes('✗ rounds.state-sync'), driftCheck.text.split('\n').filter((line) => line.includes('rounds')).join(' | '))
+  ok('check 自动把 state.round 同步为轮次文件数', state().round === 8, `round=${state().round}`)
+  ok('输出里说明同步动作', driftCheck.text.includes('机械记账已同步'), driftCheck.text.split('\n').filter((line) => line.includes('同步')).join(' '))
 
   process.stdout.write(failures === 0 ? '\n全部通过 ✓\n' : `\n失败 ${failures} 项 ✗\n`)
   if (failures === 0) rmSync(sandbox, { recursive: true, force: true })

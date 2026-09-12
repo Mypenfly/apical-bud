@@ -43,6 +43,20 @@ const STAGE_REFERENCE = {
 
 const VERDICT_LABEL = { continue: '继续', pivot: '转向', stop: '终止' }
 
+/**
+ * Keep the derived round counter in step with the round files.
+ *
+ * The counter is machine bookkeeping — nothing about the discussion is decided
+ * by it — so the tool repairs it instead of asking the model to remember. An
+ * empty string means "already in sync".
+ */
+function syncRound(state, rounds) {
+  if (!Number.isInteger(rounds) || state.round === rounds) return ''
+  const before = state.round
+  state.round = rounds
+  return `\n（机械记账已同步：state.round ${String(before)} → ${rounds}）`
+}
+
 /** One-line message from an unknown thrown value. */
 function messageOf(error) {
   return String((error && error.message) || error)
@@ -244,13 +258,14 @@ export function apply(ctx, config) {
         }
 
         if (action === 'check') {
+          const roundNote = syncRound(state, report.stats.rounds)
           state.gates = { ...(state.gates ?? {}), [report.stage]: { state: report.ok ? 'pass' : 'fail', at: stamp(), missing: report.blockers.map((item) => item.id) } }
           writeState(root, state)
           appendLog(root, `[${stamp()}] ${report.stage} check ${report.ok ? 'PASS' : `FAIL (${report.blockers.length})`}`)
           const tail = report.ok
             ? '\n可以 action=advance 推进；推进前再确认一次本阶段结论已复述给用户。'
             : '\n逐条消掉上面每一项再 check。不要用"基本完成"这类说法代替门禁通过。'
-          return { text: header + gate.renderReport(report) + tail }
+          return { text: header + gate.renderReport(report) + roundNote + tail }
         }
 
         if (action === 'advance') {
@@ -258,8 +273,10 @@ export function apply(ctx, config) {
             return { text: `${header}裁决为「终止」，讨论已停止推进阶段。若要重启，先用 action=verdict status=continue 写一条新裁决并说明重启理由。` }
           }
           if (!report.ok) {
+            const roundNote = syncRound(state, report.stats.rounds)
             state.gates = { ...(state.gates ?? {}), [report.stage]: { state: 'fail', at: stamp(), missing: report.blockers.map((item) => item.id) } }
             writeState(root, state)
+            void roundNote
             appendLog(root, `[${stamp()}] ${report.stage} advance REFUSED (${report.blockers.length})`)
             return {
               text:
@@ -272,6 +289,7 @@ export function apply(ctx, config) {
           if (next === undefined) {
             return { text: `${header}已经是终态 ${report.stage}（${report.stageTitle}）。讨论结束后产出交接说明：哪些决策先落地、哪些假设最早验证、哪些接口留后路。` }
           }
+          const roundNote = syncRound(state, report.stats.rounds)
           state.stage = next
           state.gates = { ...(state.gates ?? {}), [report.stage]: { state: 'pass', at: stamp(), missing: [] } }
           writeState(root, state)
@@ -281,7 +299,8 @@ export function apply(ctx, config) {
               `${header}已推进: ${report.stage} → ${next} ${gate.STAGE_TITLES[next]}\n`
               + `进入 ${next} 需要: ${(gate.STAGE_ARTIFACTS[next] ?? []).join('；')}\n`
               + `先读: ${STAGE_REFERENCE[next] ?? 'references/protocol.md'}（skill ${skillName} 的资源）\n`
-              + '下一步: 按协议提下一个问题（一次一问），本轮只长一节。',
+              + '下一步: 按协议先在对话里说清提案，再提一个问题（一次一问），本轮只长一节。'
+              + roundNote,
           }
         }
 

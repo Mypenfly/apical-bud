@@ -1,6 +1,7 @@
 <!-- 模板：决策记录（ADR 风格）。复制为 decisions/D-00N-<slug>.md。
      规则：accepted 之后不得改写内容，只能被新决策 superseded。
-     门禁要求：accepted 的决策必须有 sources（指向 R-000 / L-00N / N-00N），或显式 assumption: true。 -->
+     门禁要求：accepted 的决策必须有 sources（指向 R-000 / L-00N / N-00N），或显式 assumption: true。      落盘时机：先讨论后落盘。这份文件是留痕——先在对话里把内容讲清楚、拿到用户答复，再写进来（未获答复的提案不落盘）。
+     -->
 ---
 id: D-001
 title: <决定的内容，写成陈述句>

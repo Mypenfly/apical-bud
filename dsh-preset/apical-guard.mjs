@@ -5,14 +5,23 @@
  * 1. WRITE GUARD: a monotonic `ctx.tools.guard()` that denies `write`/`edit`
  *    outside the discussion root, so a discussion session never quietly starts
  *    editing production code.
- * 2. APPEND-ONLY GUARD: the same guard refuses to rewrite `seed/R-000-original.md`
+ * 2. DISCUSSION-FIRST GUARD: creating a NEW discussion document is refused until
+ *    the user has answered something in this turn. The first version of this
+ *    preset let the model materialise proposals into files and then ask "please
+ *    review L-001" — the user had to open a file to take part, and the Q&A flow
+ *    broke. Files are the LEDGER of a discussion, never its medium: proposals,
+ *    options, derivation chains and counterexamples belong in the conversation,
+ *    and land on disk only once the user has answered. Record-shaped files
+ *    (verbatim seed, round minutes, state, audit) and explicit user
+ *    instructions to write are exempt.
+ * 3. APPEND-ONLY GUARD: the same guard refuses to rewrite `seed/R-000-original.md`
  *    or an existing `rounds/round-NNN.md`. The verbatim seed and the round
  *    minutes are the tree's history; editing them would silently rewrite what
  *    was actually said.
- * 3. STATE INVARIANTS: `state.json` is whole-file only, and its `stage` and
+ * 4. STATE INVARIANTS: `state.json` is whole-file only, and its `stage` and
  *    `verdict` fields belong to `apical_gate` — the one actor that can only move
  *    them after the exit criteria pass.
- * 4. STATE BANNER: one short injected message per user turn (and whenever the
+ * 5. STATE BANNER: one short injected message per user turn (and whenever the
  *    recorded state changes) carrying the real stage, round, tree size, pending
  *    terminology and last gate result. State the model has to remember is state
  *    it will eventually get wrong — after compaction especially — so the session
@@ -155,6 +164,10 @@ function guardReason(execution, base, allowPaths) {
     }
     const history = historyInvariant(toolName, target, found.root)
     if (history !== undefined) return history
+    if (toolName === 'write' && !existsSync(target)) {
+      const discussion = discussionFirstReason(target, cwd, found.root, execution.agent)
+      if (discussion !== undefined) return discussion
+    }
     return undefined
   }
 
@@ -189,6 +202,86 @@ function historyInvariant(toolName, target, root) {
     return `${rel} 已存在，禁止整文件覆写（append-only）。新的一轮请写新的 round-NNN.md；用户原话永远保持原样。`
   }
   return undefined
+}
+
+/** Text of one `user/message` event, concatenated. */
+function userTextOf(event) {
+  const content = event?.data?.content
+  if (!Array.isArray(content)) return ''
+  return content
+    .map((block) => (block !== null && typeof block === 'object' && typeof block.text === 'string' ? block.text : ''))
+    .join('\n')
+}
+
+/** User wording that already instructs a write, so recording needs no new question. */
+const WRITE_CUES = /写|记|录|落盘|留痕|文档|改|更新|补充|加|删|整理|保存|导出|调整|应该|修正/
+
+/**
+ * Files that ARE the discussion's ledger rather than a proposal: the verbatim
+ * seed, round minutes, the machine state file, and the audit trail. Creating
+ * these never waits for an answer — they record what already happened.
+ */
+function isLedgerPath(rel) {
+  return rel === 'state.json'
+    || rel === 'README.md'
+    || rel === 'seed/R-000-original.md'
+    || /^rounds\/round-\d{3}\.md$/.test(rel)
+    || rel.startsWith('audit/')
+}
+
+/**
+ * What this turn has done so far: has the user answered anything since the model
+ * last touched the discussion root?
+ * @returns `{ sawUser, answeredAfterWrite, userText }`.
+ */
+function turnState(events, cwd, root) {
+  let lastUser = -1
+  for (let index = 0; index < events.length; index += 1) {
+    const event = events[index]
+    if (event?.type !== 'user/message') continue
+    const kind = event.data?.source?.kind
+    if (typeof kind === 'string' && INJECTED_SOURCES.has(kind)) continue
+    lastUser = index
+  }
+  if (lastUser < 0) return { sawUser: false, answeredAfterWrite: false, userText: '' }
+  const asked = new Set()
+  let lastAnswer = -1
+  let lastWrite = -1
+  for (let index = lastUser + 1; index < events.length; index += 1) {
+    const event = events[index]
+    const data = event?.data
+    if (event?.type === 'tool/call') {
+      if (data?.name === 'ask_user_question') asked.add(data.callId)
+      else if (data?.name === 'write' || data?.name === 'edit') {
+        const raw = data.arguments !== null && typeof data.arguments === 'object' && typeof data.arguments.file_path === 'string'
+          ? data.arguments.file_path
+          : undefined
+        if (raw !== undefined && isInside(resolve(cwd, raw), root)) lastWrite = index
+      }
+    } else if (event?.type === 'tool/result') {
+      const callId = typeof data?.message?.source?.callId === 'string' ? data.message.source.callId : data?.callId
+      if (typeof callId === 'string' && asked.has(callId)) lastAnswer = index
+    }
+  }
+  return { sawUser: true, answeredAfterWrite: lastAnswer > lastWrite, userText: userTextOf(events[lastUser]) }
+}
+
+/**
+ * Refuse to create a discussion document before the user has answered.
+ * @returns a denial reason, or undefined when the write may proceed.
+ */
+function discussionFirstReason(target, cwd, root, agent) {
+  const rel = relative(root, target).split(/[\\/]/).join('/')
+  if (isLedgerPath(rel)) return undefined
+  const events = agent?.session?.events
+  if (!Array.isArray(events)) return undefined
+  const turn = turnState(events, cwd, root)
+  if (!turn.sawUser) return undefined
+  if (turn.answeredAfterWrite) return undefined
+  if (WRITE_CUES.test(turn.userText)) return undefined
+  return `先讨论，再落盘：${rel} 是本轮要新建的文件，但本轮还没有拿到你的答复。\n`
+    + '把提案、选项、推演链、代价、反例完整说在对话里，用 ask_user_question 提问；拿到答复之后再写文件留痕。\n'
+    + '（文件是讨论的留痕，不是讨论的介质。用户明确要求记录、或用户在指出错误/给出修正时，这条限制自动放行。）'
 }
 
 /** Invariants that keep `stage` and `verdict` owned by the gate tool. */
@@ -242,5 +335,5 @@ function bannerText(cwd, base, found, stateRead) {
   const questionText = questions.blocking === 0 ? '阻塞本阶段问题 0' : `阻塞本阶段问题 ${questions.blocking}（${questions.ids.join(', ')}）`
   const tree = `树: 层 ${counts.layers}(确认 ${counts.layersConfirmed}) · 节点 ${counts.nodes}(留 ${counts.kept}/汰 ${counts.dropped}) · 术语 ${counts.terms}(待确认 ${counts.pending})`
   return `[apical-bud] 阶段 ${stage} · 第 ${round} 轮 · ${tree} · ${questionText} · ${gateText}${verdict}\n`
-    + `[apical-bud] 只写 ${relPath(cwd, found.root)}/；推进阶段用 apical_gate（check → advance）；一次一问；seed 与 rounds 只追加；细则见 skill apical-bud`
+    + `[apical-bud] 写范围 ${relPath(cwd, found.root)}/ · 阶段推进 apical_gate(check→advance) · 对话先行：提案与选项先说在对话里（不看文件也能判断），拿到答复再落盘；答复前新建讨论文件会被守卫拦下`
 }

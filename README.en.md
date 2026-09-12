@@ -11,12 +11,13 @@ need     layers     derivation   core concept   extensions   technology
 
 Research is **fertilizer**: it supplies premises and counterexamples, never conclusions. Questions are the **vitality**: the tree grows one node per round of Q&A. Everything is file-driven — a decision that was not written down was not made.
 
-It ships as a skill (`SKILL.md` + `references/` + `templates/` + `scripts/`), and as a DSH agent preset (`dsh-preset/`) that turns the method into machinery. Four claims that are unusual for a "thinking partner":
+It ships as a skill (`SKILL.md` + `references/` + `templates/` + `scripts/`), and as a DSH agent preset (`dsh-preset/`) that turns the method into machinery. Five claims that are unusual for a "thinking partner":
 
-1. **Derivation, not brainstorming.** Every concept node records which parent it came from, and its ancestry must reach the seed. The gate rejects orphan nodes: an idea can be discussed, but it cannot impersonate a derivation.
-2. **Layering is itself an interpretation.** There is always more than one way to decompose a need; writing down only one silently replaces your need with my wording. So every layer keeps the competing reading it beat, and needs your confirmation.
-3. **One apical bud, and pruned branches stay.** Converging means choosing one core concept and recording the rivals it beat, with reasons. Six months from now that is the only answer to "why not the other path".
-4. **Terminology must not become a wall.** At most one new term per round, at most one awaiting your confirmation, and a term may not be defined using a term that is not yet defined above it. **You may rewrite any question or term** — I replace it everywhere and record the former name.
+1. **The conversation is the medium; files are the ledger.** Proposals, options and derivation chains are stated in chat — you never have to open a file to answer, and files record only what has already happened. A discussion degrades into "it writes, I read, I nitpick" exactly when this is violated (the DSH preset enforces it with a write guard).
+2. **Derivation, not brainstorming.** Every concept node records which parent it came from, and its ancestry must reach the seed. The gate rejects orphan nodes: an idea can be discussed, but it cannot impersonate a derivation.
+3. **Layering is itself an interpretation.** There is always more than one way to decompose a need; writing down only one silently replaces your need with my wording. So every layer keeps the competing reading it beat, and needs your confirmation.
+4. **One apical bud, and pruned branches stay.** Converging means choosing one core concept and recording the rivals it beat, with reasons. Six months from now that is the only answer to "why not the other path".
+5. **Terminology must not become a wall.** At most one new term per round, at most one awaiting your confirmation, and a term may not be defined using a term that is not yet defined above it. **You may rewrite any question or term** — I replace it everywhere and record the former name.
 
 ## Install
 
