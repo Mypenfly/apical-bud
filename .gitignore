@@ -1,0 +1,4 @@
+# 自检沙箱（运行时生成，非交付物）
+.selftest/
+*.tmp
+.DS_Store

@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "topic": "<本次讨论的主题，一句话>",
+  "slug": "<design/ 下的目录名，必须与目录同名>",
+  "stage": "S0",
+  "round": 0,
+  "gates": {},
+  "verdict": { "status": "continue", "at": null, "note": "" }
+}
