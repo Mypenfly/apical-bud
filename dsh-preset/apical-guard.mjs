@@ -27,21 +27,31 @@
  *    it will eventually get wrong — after compaction especially — so the session
  *    reads it from the filesystem each turn.
  *
+ * MULTIPLE TREES: a project legitimately holds several trees — one per need or
+ * phase, sometimes related. A session binds to one of them (`apical_gate
+ * action=bind`), and the guard then scopes writes to that tree while allowing
+ * new trees to be created; before a binding exists it permits writes inside any
+ * existing tree instead of refusing everything, and the banner asks for the
+ * binding. See `activeTree()`.
+ *
  * Escape hatches, deliberately explicit: `DSH_APICAL_UNLOCK=1` in the host
  * environment disables the guard entirely (for the user, not the model), and
  * `allowPaths` in the row's config whitelists extra prefixes.
  */
 
 import { existsSync } from 'node:fs'
-import { basename, dirname, relative, resolve } from 'node:path'
+import { basename, dirname, join, relative, resolve } from 'node:path'
 import {
   DEFAULT_BASE,
   discoverRoot,
   isInside,
+  listRoots,
   openQuestions,
+  readFocusSlug,
   readState,
   relPath,
   treeCounts,
+  treeSummary,
 } from './lib/apical-state.mjs'
 
 /** Cordis plugin name used by loader diagnostics. */
@@ -51,7 +61,7 @@ export const name = 'apical-guard'
 export const inject = ['tools']
 
 /** Injected message sources that must not count as user turns. */
-const INJECTED_SOURCES = new Set(['apical-banner', 'instruction-hint', 'skill-invocation', 'skill-catalog'])
+const INJECTED_SOURCES = new Set(['apical-banner', 'apical-focus', 'instruction-hint', 'skill-invocation', 'skill-catalog'])
 
 /** Register the guards and the per-turn state banner. */
 export function apply(ctx, config) {
@@ -97,11 +107,11 @@ export function apply(ctx, config) {
       mark.cursor = events.length
 
       const cwd = session.header?.cwd ?? process.cwd()
-      const found = discoverRoot(cwd, base)
-      const stateRead = found.kind === 'one' ? readState(found.root) : { ok: false }
-      const hash = found.kind === 'one' && stateRead.ok
-        ? `${found.root}|${String(stateRead.state.stage)}|${String(stateRead.state.round)}|${String(stateRead.state.verdict?.status ?? 'continue')}`
-        : `none:${found.kind}`
+      const active = activeTree(cwd, base, agent)
+      const stateRead = active.root !== undefined ? readState(active.root) : { ok: false }
+      const hash = active.root !== undefined && stateRead.ok
+        ? `${active.kind}:${active.root}|${String(stateRead.state.stage)}|${String(stateRead.state.round)}|${String(stateRead.state.verdict?.status ?? 'continue')}`
+        : `${active.kind}:${(active.roots ?? []).map((root) => basename(root)).join(',')}`
 
       const newTurn = mark.turns !== mark.lastTurns
       const changed = hash !== mark.hash
@@ -110,7 +120,7 @@ export function apply(ctx, config) {
       marks.set(session.id, mark)
       if (!newTurn && !changed) return decision
 
-      const text = bannerText(cwd, base, found, stateRead)
+      const text = bannerText(cwd, base, active, stateRead)
       if (text === '') return decision
       mark.seq += 1
       void signal
@@ -152,31 +162,74 @@ function guardReason(execution, base, allowPaths) {
     if (isInside(target, resolve(cwd, allowed))) return undefined
   }
 
-  const found = discoverRoot(cwd, base)
-  if (found.kind === 'ambiguous') {
-    return `本会话是「顶芽模式」，但 ${base}/ 下有多个讨论根，无法判断写入是否越界：${found.roots.map((root) => relPath(cwd, root)).join(' / ')}。先与用户确认本次讨论的讨论根，把多余的移走或删除。`
-  }
+  const baseDir = resolve(cwd, base)
+  const active = activeTree(cwd, base, execution.agent)
+  const scopeRoot = active.kind === 'bound' || active.kind === 'single' ? active.root : resolve(baseDir, '<slug>')
 
-  if (found.kind === 'one') {
-    if (!isInside(target, found.root)) return outsideMessage(cwd, found.root, target)
-    if (dirname(target) === found.root && basename(target) === 'state.json') {
-      return stateInvariant(toolName, args, found.root)
-    }
-    const history = historyInvariant(toolName, target, found.root)
-    if (history !== undefined) return history
+  // Outside the discussion base entirely: never allowed in this mode.
+  if (!isInside(target, baseDir)) return outsideMessage(cwd, scopeRoot, target)
+
+  const parts = relative(baseDir, target).split(/[\\/]/).filter((part) => part !== '')
+  if (parts.length < 2) return outsideMessage(cwd, scopeRoot, target)
+  const slug = parts[0]
+  const targetRoot = resolve(baseDir, slug)
+
+  // A tree that does not exist yet is being bootstrapped: that is exactly how a
+  // project gains its second, third, … tree, so it is allowed — but the
+  // discussion-first rule still applies, so only ledger-shaped files (state,
+  // verbatim seed, round minutes) may appear before the user has answered.
+  if (!existsSync(join(targetRoot, 'state.json'))) {
     if (toolName === 'write' && !existsSync(target)) {
-      const discussion = discussionFirstReason(target, cwd, found.root, execution.agent)
-      if (discussion !== undefined) return discussion
+      const bootstrap = discussionFirstReason(target, cwd, targetRoot, execution.agent)
+      if (bootstrap !== undefined) return bootstrap
     }
     return undefined
   }
 
-  // No discussion root yet: allow creating one (`<base>/<slug>/…`), nothing else.
-  const baseDir = resolve(cwd, base)
-  if (!isInside(target, baseDir)) return outsideMessage(cwd, resolve(baseDir, '<slug>'), target)
-  const parts = relative(baseDir, target).split(/[\\/]/).filter((part) => part !== '')
-  if (parts.length < 2) return outsideMessage(cwd, resolve(baseDir, '<slug>'), target)
+  // Bound sessions work on one tree; switching is one tool call, and keeping it
+  // explicit is what stops a session from editing two trees by accident.
+  if ((active.kind === 'bound' || active.kind === 'single') && active.slug !== slug) {
+    return `本会话当前在讨论树 ${active.slug} 上，不能直接改 ${slug}。`
+      + `要切换：apical_gate action=bind slug=${slug}；要看全部：action=trees。`
+  }
+
+  if (dirname(target) === targetRoot && basename(target) === 'state.json') {
+    return stateInvariant(toolName, args, targetRoot)
+  }
+  const history = historyInvariant(toolName, target, targetRoot)
+  if (history !== undefined) return history
+  if (toolName === 'write' && !existsSync(target)) {
+    const discussion = discussionFirstReason(target, cwd, targetRoot, execution.agent)
+    if (discussion !== undefined) return discussion
+  }
   return undefined
+}
+
+/**
+ * Which tree this session is working on.
+ *
+ * Resolution order: the session's durable binding, then the single discovered
+ * tree, then "several, unbound" (writes are permitted inside any of them so a
+ * conversation is never hard-blocked, and the banner asks for a binding).
+ * @returns `{kind:'bound'|'single'|'multi'|'none', root?, slug?, roots?, missingBinding?}`.
+ */
+function activeTree(cwd, base, agent) {
+  const found = discoverRoot(cwd, base)
+  const bound = readFocusSlug(agent?.session?.events)
+  if (bound !== undefined) {
+    const root = resolve(cwd, base, bound)
+    if (existsSync(join(root, 'state.json'))) return { kind: 'bound', root, slug: bound }
+    // The binding outlived its tree: fall back and say so.
+    return { ...fallbackTree(found), missingBinding: bound }
+  }
+  return fallbackTree(found)
+}
+
+/** Map a discovery result onto the active-tree vocabulary. */
+function fallbackTree(found) {
+  if (found.kind === 'one') return { kind: 'single', root: found.root, slug: found.slug }
+  if (found.kind === 'ambiguous') return { kind: 'multi', roots: found.roots }
+  return { kind: 'none' }
 }
 
 /** Denial text for a write outside the discussion root. */
@@ -313,19 +366,28 @@ function stateInvariant(toolName, args, root) {
 }
 
 /** Two-line state banner, or '' when there is nothing worth saying. */
-function bannerText(cwd, base, found, stateRead) {
-  if (found.kind === 'none') {
+/** Human label for a tree's lifecycle state. */
+const STATUS_LABEL = { open: '进行中', done: '已完成', stopped: '已终止' }
+
+function bannerText(cwd, base, active, stateRead) {
+  if (active.kind === 'none') {
     return `[apical-bud] 还没有讨论根：按 skill apical-bud 进入 S0（种子）—— 建 ${base}/<slug>/ 并写入 state.json（topic / slug 必填），再把用户原话存进 seed/R-000-original.md。`
   }
-  if (found.kind === 'ambiguous') {
-    return `[apical-bud] 发现多个讨论根，先与用户确认本次讨论用哪个：${found.roots.map((root) => relPath(cwd, root)).join(' / ')}`
+  if (active.kind === 'multi') {
+    const listed = active.roots.map((root) => {
+      const summary = treeSummary(root)
+      return `${summary.slug}(${STATUS_LABEL[summary.status] ?? summary.status} ${summary.stage})`
+    })
+    return `[apical-bud] 项目里有 ${active.roots.length} 棵树，本会话尚未绑定：${listed.join(' · ')}\n`
+      + `[apical-bud] 先用 apical_gate action=bind slug=<slug> 绑定本会话要推进的那一棵（绑定后写入范围随之确定）；action=trees 可看全部树的状态`
   }
+  const root = active.root
   const state = stateRead.ok ? stateRead.state : undefined
   const stage = typeof state?.stage === 'string' ? state.stage : 'S0'
   const round = Number.isInteger(state?.round) ? state.round : 0
   const gate = state?.gates?.[stage]
-  const questions = openQuestions(found.root, stage)
-  const counts = treeCounts(found.root)
+  const questions = openQuestions(root, stage)
+  const counts = treeCounts(root)
   const verdict = typeof state?.verdict?.status === 'string' && state.verdict.status !== 'continue' ? ` · 裁决=${state.verdict.status}` : ''
   const gateText = gate === undefined
     ? '门禁: 未运行（有改动后先 apical_gate action=check）'
@@ -333,7 +395,13 @@ function bannerText(cwd, base, found, stateRead) {
       ? '门禁: 上次 check PASS（有改动需重跑）'
       : `门禁: 上次 check FAIL（缺 ${Array.isArray(gate.missing) ? gate.missing.length : 0} 项）`
   const questionText = questions.blocking === 0 ? '阻塞本阶段问题 0' : `阻塞本阶段问题 ${questions.blocking}（${questions.ids.join(', ')}）`
-  const tree = `树: 层 ${counts.layers}(确认 ${counts.layersConfirmed}) · 节点 ${counts.nodes}(留 ${counts.kept}/汰 ${counts.dropped}) · 术语 ${counts.terms}(待确认 ${counts.pending})`
-  return `[apical-bud] 阶段 ${stage} · 第 ${round} 轮 · ${tree} · ${questionText} · ${gateText}${verdict}\n`
-    + `[apical-bud] 写范围 ${relPath(cwd, found.root)}/ · 阶段推进 apical_gate(check→advance) · 对话先行：提案与选项先说在对话里（不看文件也能判断），拿到答复再落盘；答复前新建讨论文件会被守卫拦下`
+  const tree = `层 ${counts.layers}(确认 ${counts.layersConfirmed}) · 节点 ${counts.nodes}(留 ${counts.kept}/汰 ${counts.dropped}) · 术语 ${counts.terms}(待确认 ${counts.pending})`
+  const siblings = listRoots(cwd, base)
+  const bound = active.kind === 'bound' ? '' : '（按唯一树推断，未显式绑定）'
+  const stale = active.missingBinding === undefined ? '' : ` · 原绑定 ${active.missingBinding} 已不存在`
+  const scope = siblings.length > 1
+    ? `写范围 ${relPath(cwd, root)}/${bound} · 本项目共 ${siblings.length} 棵树：${siblings.map((item) => basename(item)).join(', ')}（切换用 apical_gate action=bind）`
+    : `写范围 ${relPath(cwd, root)}/${bound}`
+  return `[apical-bud] 树 ${basename(root)} · 阶段 ${stage} · 第 ${round} 轮 · ${tree} · ${questionText} · ${gateText}${verdict}${stale}\n`
+    + `[apical-bud] ${scope} · 阶段推进 apical_gate(check→advance) · 对话先行：提案与选项先说在对话里（不看文件也能判断），拿到答复再落盘；答复前新建讨论文件会被守卫拦下`
 }

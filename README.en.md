@@ -57,6 +57,15 @@ glossary.md    terms ([确认] confirmed / [提案] proposed)
 audit/         objections, verdicts, gate log
 ```
 
+**A project may hold several trees.** Different needs, different phases — and trees may declare how they relate (`dependsOn` / `relation` in `state.json`, cross-cited in prose as `<slug>#L-003`). One session binds to one tree:
+
+```bash
+apical_gate action=trees                 # list every tree and its lifecycle state
+apical_gate action=bind slug=<slug>      # bind this session to one of them
+```
+
+Once a tree reaches S7 (or is terminated by a verdict), do not grow a new need on it — start a new tree and record what it inherits and overrides in the seed's relation section.
+
 The full contract for directories, IDs, frontmatter and gate rules is in [`references/doc-conventions.md`](references/doc-conventions.md).
 
 ## The gate

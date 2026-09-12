@@ -4,7 +4,16 @@
 
 ## 1. 讨论根
 
-固定在仓库顶层的 `design/<slug>/`，`<slug>` 用 ASCII kebab-case（例：`paper-ink-ui`）。一次讨论一个目录；同名目录再次讨论就换 slug。创建命令（把 `<skill>` 换成本 skill 所在目录）：
+讨论树固定在仓库顶层的 `design/<slug>/`，`<slug>` 用 ASCII kebab-case（例：`paper-ink-ui`）。
+
+**一个项目可以有多棵树**——不同需求、不同阶段各一棵，这很正常：
+
+- **一个会话绑定一棵树**：`apical_gate action=bind slug=<slug>`。项目里只有一棵树时自动推断；有多棵且未绑定时，工具与横幅会先让你绑定，而不是猜。
+- **一棵树结束就开新树**：S7 定稿或裁决终止之后，不要在旧树上长新需求——新建 `design/<新-slug>/`，并用 `state.json` 的 `dependsOn` 与 `relation` 记录两棵树的关联（也见下方「与已有树的关系」）。
+- **切换**用 `bind`；`apical_gate action=trees` 列出全部树及其生命周期（进行中 / 已到 S7 定稿 / 已终止）。
+- 同一个 slug 不要用来开第二次讨论——历史要被读得懂，就别覆盖它。
+
+创建命令（把 `<skill>` 换成本 skill 所在目录）：
 
 ```bash
 mkdir -p design/<slug>/{seed,layers,derivation,concept,tech,questions,decisions,rounds,audit}
@@ -176,10 +185,20 @@ supersedes:
   "slug": "paper-ink-ui",
   "stage": "S2",
   "round": 9,
+  "dependsOn": ["paper-ink"],
+  "relation": "沿用 paper-ink 的视觉结论，只重做交互层",
   "gates": { "S1": { "state": "pass", "at": "2026-09-12 10:31", "missing": [] } },
   "verdict": { "status": "continue", "at": null, "note": "" }
 }
 ```
+
+`dependsOn` 与 `relation` 是可选的，只在树与树有关联时写：
+
+| 字段 | 说明 | 门禁 |
+|---|---|---|
+| `dependsOn` | 上游树的目录名数组 | 引用的树不存在 → 告警（树被移动/删除不阻塞） |
+| `relation` | 一句话说明关联 | 声明了 `dependsOn` 时，`seed/real-need.md` 必须有 `## 与已有树的关系`（阻塞） |
+| 正文里的跨树引用 | 写成 `<slug>#L-003`（层/节点/需求 ID 都可以） | 引用了不存在的树 → 告警 |
 
 - `round` 必须等于 `rounds/` 里的轮次文件数。
 - `gates` 由门禁工具写；模型不手写。

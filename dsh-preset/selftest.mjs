@@ -161,6 +161,15 @@ async function main() {
 
   const gateTool = tools.find((definition) => definition.name === 'apical_gate')
   const call = (args) => gateTool.execute(args, { agent: fakeAgent().agent, signal: new AbortController().signal })
+  const callWith = (args, agent) => gateTool.execute(args, { agent, signal: new AbortController().signal })
+  /** A root agent whose `inject` records durable events, like the host does. */
+  const agentWithInject = () => {
+    const holder = fakeAgent()
+    holder.agent.inject = (message) => {
+      holder.session.events.push({ type: 'user/message', data: { id: message.id, role: message.role, content: message.content, source: message.source } })
+    }
+    return holder.agent
+  }
   const guardCheck = (name, args, agent) => guards[0]({ name, arguments: args, agent: agent ?? fakeAgent().agent, callId: 'c1', token: 't1', signal: new AbortController().signal })
   const banner = async (session) => {
     const decision = await listeners.get('agent/pre-step')[0]({ agent: { session, parentAgent: undefined }, signal: new AbortController().signal }, async () => ({ messages: [] }))
@@ -183,7 +192,9 @@ async function main() {
 
   process.stdout.write('\n[3] 写守卫：越界、不变量与 append-only\n')
   ok('拒绝写生产代码 src/app.ts', typeof guardCheck('write', { file_path: 'src/app.ts', content: 'x' }) === 'string')
-  ok('拒绝写讨论根之外的同级目录', typeof guardCheck('write', { file_path: 'design/other/notes.md', content: 'x' }) === 'string')
+  // design/<新 slug>/ 是「开一棵新树」的入口，因此允许；直接的散文件仍被拒绝（见下一条）。
+  ok('允许在 design/ 下开新树目录', guardCheck('write', { file_path: 'design/other/notes.md', content: 'x' }) === undefined)
+  ok('拒绝 design/ 顶层的散文件', typeof guardCheck('write', { file_path: 'design/loose.md', content: 'x' }) === 'string')
   ok('允许写讨论根内的文档', guardCheck('write', { file_path: 'design/paper-ink/layers/L-001-a.md', content: 'x' }) === undefined)
   ok('允许 edit 讨论根内的文档', guardCheck('edit', { file_path: 'design/paper-ink/layers/L-001-a.md', old_string: 'a', new_string: 'b' }) === undefined)
   ok('拒绝直接 edit state.json', typeof guardCheck('edit', { file_path: 'design/paper-ink/state.json', old_string: 'a', new_string: 'b' }) === 'string')
@@ -201,7 +212,7 @@ async function main() {
   const fake = fakeAgent()
   const atStart = await banner(fake.session)
   ok('会话第一步注入一次', atStart.length === 1)
-  ok('横幅含阶段与树规模', atStart[0]?.content[0].text.includes('阶段 S0') && atStart[0].content[0].text.includes('树: 层'))
+  ok('横幅含树名、阶段与树规模', atStart[0]?.content[0].text.includes('树 paper-ink') && atStart[0].content[0].text.includes('阶段 S0') && atStart[0].content[0].text.includes('层 0(确认 0)'))
   ok('同一轮不重复注入', (await banner(fake.session)).length === 0)
   fake.session.events.push({ type: 'user/message', data: { source: { kind: 'user' } } })
   ok('用户消息后再注入一次', (await banner(fake.session)).length === 1)
@@ -383,6 +394,63 @@ seed → L-002 → N-001 → N-003
   ok('state.round 不一致不再阻塞阶段', driftCheck.text.includes('! rounds.state-sync') && !driftCheck.text.includes('✗ rounds.state-sync'), driftCheck.text.split('\n').filter((line) => line.includes('rounds')).join(' | '))
   ok('check 自动把 state.round 同步为轮次文件数', state().round === 8, `round=${state().round}`)
   ok('输出里说明同步动作', driftCheck.text.includes('机械记账已同步'), driftCheck.text.split('\n').filter((line) => line.includes('同步')).join(' '))
+
+  process.stdout.write('\n[13] 一个项目多棵树\n')
+  // 第二棵树：不同阶段的新需求，并与第一棵树声明关联。
+  const second = join(sandbox, 'design', 'paper-ink-2')
+  mkdirSync(join(second, 'seed'), { recursive: true })
+  writeFileSync(join(second, 'state.json'), JSON.stringify({
+    schema: 1, topic: '第二棵树：纸墨前端的下一个阶段', slug: 'paper-ink-2', stage: 'S0', round: 0,
+    dependsOn: ['paper-ink'], relation: '沿用纸墨前端的视觉结论，只重做交互层', gates: {},
+    verdict: { status: 'continue', at: null, note: '' },
+  }, null, 2))
+  writeFileSync(join(second, 'seed', 'R-000-original.md'), `---\nid: R-000\ntitle: 用户原话\nstatus: accepted\nstage: S0\nsources: []\nassumption: false\nupdated: 2026-01-08\n---\n\n> 交互也得像纸墨那样克制：不要装饰性动效，不要为了好看而动的元素。\n`)
+  writeFileSync(join(second, 'seed', 'real-need.md'), `---\nkind: seed\nstatus: confirmed\nstatement: 交互层与纸墨视觉一致，不做装饰性动效\nupdated: 2026-01-08\n---\n\n## 被否的表述\n\n- "加点微交互" —— 为什么否：与"不被打断"冲突。\n\n## 非目标\n\n- 不做手势库 —— 理由：与视觉一致性无关。\n`)
+  const multiAgent = fakeAgent().agent
+  const inSecond = { file_path: 'design/paper-ink-2/layers/L-001-x.md', content: 'x' }
+  const inFirst = { file_path: 'design/paper-ink/layers/L-001-y.md', content: 'x' }
+  ok('未绑定时允许写任意已有树', guardCheck('write', inSecond, multiAgent) === undefined && guardCheck('write', inFirst, multiAgent) === undefined)
+  ok('树之外仍然拒绝', typeof guardCheck('write', { file_path: 'src/app.ts', content: 'x' }, multiAgent) === 'string')
+  ok('design/ 顶层散文件仍然拒绝', typeof guardCheck('write', { file_path: 'design/notes.md', content: 'x' }, multiAgent) === 'string')
+  const multiBanner = await banner((() => { const holder = fakeAgent(); holder.session.events.push({ type: 'user/message', data: { source: { kind: 'user' }, content: [{ type: 'text', text: '继续' }] } }); return holder.session })())
+  ok('未绑定时横幅列出全部树并要求绑定', multiBanner.some((message) => message.content[0].text.includes('尚未绑定') && message.content[0].text.includes('paper-ink-2')), (multiBanner[0]?.content[0].text ?? '').split('\n')[0])
+
+  const treesReport = await call({ action: 'trees' })
+  ok('trees 列出两棵树与生命周期', treesReport.text.includes('共 2 棵树') && treesReport.text.includes('paper-ink') && treesReport.text.includes('paper-ink-2'), treesReport.text.split('\n')[1])
+  const bindAgent = agentWithInject()
+  const bindReport = await callWith({ action: 'bind', slug: 'paper-ink-2' }, bindAgent)
+  ok('bind 成功并给出新树状态', bindReport.text.includes('已绑定') && bindReport.text.includes('paper-ink-2'), bindReport.text.split('\n')[0])
+  ok('绑定标记落进会话事件（可持久恢复）', bindAgent.session.events.some((event) => event?.data?.source?.kind === 'apical-focus' && event.data.source !== undefined))
+  const statusAfterBind = await callWith({ action: 'status' }, bindAgent)
+  ok('不传 root 也能解析到绑定的树', statusAfterBind.text.includes('paper-ink-2') && statusAfterBind.text.includes('阶段: S0'), statusAfterBind.text.split('\n')[0])
+  ok('绑定后不能写别的树', typeof guardCheck('write', inFirst, bindAgent) === 'string')
+  ok('绑定后可写本树', guardCheck('write', { file_path: 'design/paper-ink-2/seed/notes.md', content: 'x' }, bindAgent) === undefined)
+  ok('绑定后仍可新建第三棵树', guardCheck('write', { file_path: 'design/paper-ink-3/state.json', content: '{}' }, bindAgent) === undefined)
+  const bindGhost = await callWith({ action: 'bind', slug: 'ghost-tree' }, bindAgent)
+  ok('bind 不存在的树给出可用列表', bindGhost.text.includes('没有找到') && bindGhost.text.includes('paper-ink-2'), bindGhost.text.split('\n')[0])
+
+  process.stdout.write('\n[14] 树与树的关联\n')
+  const missingRelation = await callWith({ action: 'check', root: 'design/paper-ink-2' }, fakeAgent().agent)
+  ok('声明 dependsOn 却没写「与已有树的关系」→ 拒绝', missingRelation.text.includes('与已有树的关系'), missingRelation.text.split('\n').filter((line) => line.includes('关系')).join(' '))
+  writeFileSync(join(second, 'seed', 'real-need.md'), `---\nkind: seed\nstatus: confirmed\nstatement: 交互层与纸墨视觉一致，不做装饰性动效\nupdated: 2026-01-08\n---\n\n## 被否的表述\n\n- "加点微交互" —— 为什么否：与"不被打断"冲突。\n\n## 非目标\n\n- 不做手势库。\n\n## 与已有树的关系\n\n- 继承 paper-ink#L-002 的"层级靠留白与字重"；推翻它的动效例外。\n`)
+  const withRelation = await callWith({ action: 'check', root: 'design/paper-ink-2' }, fakeAgent().agent)
+  ok('写了关系之后 S0 通过', withRelation.text.includes('PASS'), withRelation.text.split('\n').slice(2, 4).join(' / '))
+  const ghostState = JSON.parse(readFileSync(join(second, 'state.json'), 'utf8'))
+  ghostState.dependsOn = ['ghost-tree']
+  writeFileSync(join(second, 'state.json'), JSON.stringify(ghostState, null, 2))
+  const ghostReport = await callWith({ action: 'check', root: 'design/paper-ink-2' }, fakeAgent().agent)
+  ok('依赖不存在的树只是提醒', ghostReport.text.includes('! trees.dependsOn') && !ghostReport.text.includes('✗ trees.dependsOn'), ghostReport.text.split('\n').filter((line) => line.includes('trees.')).join(' '))
+  ghostState.dependsOn = ['paper-ink']
+  writeFileSync(join(second, 'state.json'), JSON.stringify(ghostState, null, 2))
+
+  process.stdout.write('\n[15] 已结束的树\n')
+  const finished = JSON.parse(readFileSync(join(second, 'state.json'), 'utf8'))
+  finished.verdict = { status: 'stop', at: '2026-01-09 10:00', note: '演示：终止' }
+  writeFileSync(join(second, 'state.json'), JSON.stringify(finished, null, 2))
+  const treesAgain = await call({ action: 'trees' })
+  ok('trees 标出已终止的树并给出新建建议', treesAgain.text.includes('已终止') && treesAgain.text.includes('dependsOn'), treesAgain.text.split('\n').slice(-1)[0])
+  const bindStopped = await callWith({ action: 'bind', slug: 'paper-ink-2' }, agentWithInject())
+  ok('绑定已终止的树会给出重启提示', bindStopped.text.includes('终止') && bindStopped.text.includes('verdict'), bindStopped.text.split('\n').slice(-2)[0])
 
   process.stdout.write(failures === 0 ? '\n全部通过 ✓\n' : `\n失败 ${failures} 项 ✗\n`)
   if (failures === 0) rmSync(sandbox, { recursive: true, force: true })

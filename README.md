@@ -58,6 +58,15 @@ questions/     待决问题（Q-00N）        decisions/  决策记录（D-00N�
 glossary.md    术语表（[确认] / [提案]）  audit/      异议、裁决、门禁日志
 ```
 
+**一个项目可以有多棵树。** 不同需求、不同阶段各一棵，树与树之间还能声明关联（`state.json` 的 `dependsOn` / `relation`，正文里用 `<slug>#L-003` 互相引用）。一个会话绑定一棵树：
+
+```bash
+apical_gate action=trees                 # 列出项目里的全部树与生命周期状态
+apical_gate action=bind slug=<slug>      # 绑定本会话要推进的那一棵
+```
+
+一棵树走完 S7（或裁决终止）之后不要在它上面长新需求——新建一棵树，并在种子里写「与已有树的关系」：继承了什么、推翻了什么。
+
 完整的目录、ID、frontmatter 与门禁契约见 `references/doc-conventions.md`。
 
 ## 门禁

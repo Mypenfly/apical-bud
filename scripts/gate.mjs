@@ -33,7 +33,7 @@
  */
 
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs'
-import { basename, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 /** The stage machine, in tree terms. Order is the contract: no stage may be skipped. */
@@ -385,6 +385,58 @@ export function validate(root, options = {}) {
     .map((doc) => String(doc.data.id))
   add('tree.connected', orphans.length === 0, `这些保留节点的祖先链没有通到种子（等于凭空的灵感，不是推演）：${orphans.join(', ')}`)
 
+  // ── relations to other trees in the same project ─────────────────────────
+  // A project legitimately holds several trees (one per need or phase) and they
+  // are often related. Relations are declared in `state.json` (dependsOn +
+  // relation) and may be cited in prose as `<slug>#L-003`.
+  const parentDir = dirname(rootDir)
+  let siblingSlugs = []
+  try {
+    siblingSlugs = readdirSync(parentDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && existsSync(join(parentDir, entry.name, 'state.json')))
+      .map((entry) => entry.name)
+  } catch {
+    siblingSlugs = []
+  }
+  let dependsOn = []
+  if (state !== null && state.dependsOn !== undefined) {
+    if (!Array.isArray(state.dependsOn)) {
+      add('trees.dependsOn', false, 'state.json 的 dependsOn 必须是数组，例如 ["niri-to-denial"]')
+    } else {
+      dependsOn = state.dependsOn.map(String)
+      const missing = dependsOn.filter((item) => !siblingSlugs.includes(item))
+      add(
+        'trees.dependsOn',
+        missing.length === 0,
+        `dependsOn 指向的树不在此项目里：${missing.join(', ')}（同级目录下没有对应 state.json；树被移动或删除只是提醒，不阻塞）`,
+        'warn',
+      )
+    }
+  }
+  if (state !== null && state.relation !== undefined && typeof state.relation !== 'string') {
+    add('trees.relation', false, 'state.json 的 relation 必须是一句话（字符串），说明与 dependsOn 里那棵树的关系')
+  }
+  const citedSlugs = new Set()
+  for (const file of filesUnder(rootDir)) {
+    if (!file.endsWith('.md')) continue
+    let text
+    try {
+      text = readFileSync(file, 'utf8')
+    } catch {
+      continue
+    }
+    for (const match of text.matchAll(/([a-z0-9][a-z0-9-]{2,})#(?:R|L|N)-\d{3}/g)) citedSlugs.add(match[1])
+  }
+  const unknownCitations = [...citedSlugs].filter((item) => item !== slug && !siblingSlugs.includes(item))
+  if (citedSlugs.size > 0) {
+    add(
+      'trees.citations',
+      unknownCitations.length === 0,
+      `引用了不存在的树：${unknownCitations.map((item) => `${item}#…`).join(', ')}（跨树引用写成 <slug>#L-003；同级目录下要有那棵树）`,
+      'warn',
+    )
+  }
+
   // ── decisions stay traceable ─────────────────────────────────────────────
   const traceable = new Set([...knownIds])
   const untraceable = []
@@ -463,6 +515,9 @@ export function validate(root, options = {}) {
         const sections = sectionsOf(seed.body)
         if (bullets(sections.get('被否的表述')).length < 1) problems.push('缺少“## 被否的表述”或条目为空（没有它就无法证明对齐发生过）')
         if (bullets(sections.get('非目标')).length < 1) problems.push('缺少“## 非目标”或条目为空')
+        if (Array.isArray(state?.dependsOn) && state.dependsOn.length > 0 && !hasContent(sections.get('与已有树的关系'))) {
+          problems.push('state.json 声明了 dependsOn，因此这里必须写「## 与已有树的关系」：继承了哪棵树的什么、又推翻了什么（树与树有关联时，这条是唯一的追溯入口）')
+        }
       }
       add('stage.S0.seed', problems.length === 0, problems.join('；'))
     },
@@ -640,6 +695,8 @@ export function validate(root, options = {}) {
       rounds: roundFiles.length,
       terms: glossary.terms.length,
       termsPending: glossary.unconfirmed.length,
+      siblings: siblingSlugs.length,
+      dependsOn: dependsOn.length,
     },
   }
 }

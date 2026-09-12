@@ -76,6 +76,76 @@ export function appendLog(root, line) {
   }
 }
 
+/**
+ * Source kind of the durable session→tree binding marker.
+ *
+ * A project may hold several trees at once (one per need or phase), so a session
+ * has to say which one it is working on. The binding lives as an injected
+ * session event rather than a file: two sessions can then work on two trees of
+ * the same project without fighting over a shared marker, and the binding
+ * survives context compaction because session events are durable.
+ */
+export const FOCUS_SOURCE = 'apical-focus'
+
+/** Text of one injected `user/message` event. */
+function eventText(event) {
+  const content = event?.data?.content
+  if (!Array.isArray(content)) return ''
+  return content
+    .map((block) => (block !== null && typeof block === 'object' && typeof block.text === 'string' ? block.text : ''))
+    .join('\n')
+}
+
+/**
+ * The slug this session is bound to, from the newest durable focus marker.
+ * @param events - the session's event array.
+ * @returns the slug, or undefined when the session has not bound a tree yet.
+ */
+export function readFocusSlug(events) {
+  if (!Array.isArray(events)) return undefined
+  let slug
+  for (const event of events) {
+    if (event?.type !== 'user/message') continue
+    if (event.data?.source?.kind !== FOCUS_SOURCE) continue
+    const match = /slug=([a-z0-9][a-z0-9-]*)/.exec(eventText(event))
+    if (match !== null) slug = match[1]
+  }
+  return slug
+}
+
+/**
+ * One tree's headline facts, for listing several trees side by side.
+ * @param root - absolute path of `design/<slug>/`.
+ * @returns `{ slug, root, ok, topic, stage, round, verdict, dependsOn, relation, status, ...counts }`.
+ */
+export function treeSummary(root) {
+  const slug = basename(root)
+  const read = readState(root)
+  const counts = treeCounts(root)
+  const state = read.ok ? read.state : {}
+  const gates = state?.gates ?? {}
+  const done = state?.stage === 'S7' && gates?.S7?.state === 'pass'
+  const stopped = state?.verdict?.status === 'stop'
+  return {
+    slug,
+    root,
+    ok: read.ok,
+    topic: typeof state?.topic === 'string' ? state.topic : '',
+    stage: typeof state?.stage === 'string' ? state.stage : '?',
+    round: Number.isInteger(state?.round) ? state.round : 0,
+    verdict: typeof state?.verdict?.status === 'string' ? state.verdict.status : 'continue',
+    dependsOn: Array.isArray(state?.dependsOn) ? state.dependsOn.map(String) : [],
+    relation: typeof state?.relation === 'string' ? state.relation : '',
+    status: stopped ? 'stopped' : done ? 'done' : 'open',
+    ...counts,
+  }
+}
+
+/** Count of trees in the project (including this one). */
+export function siblingCount(root) {
+  return listRoots(dirname(root)).length
+}
+
 /** Local `YYYY-MM-DD HH:MM`, the format the criteria/options ordering check compares. */
 export function stamp(date = new Date()) {
   const pad = (value) => String(value).padStart(2, '0')
