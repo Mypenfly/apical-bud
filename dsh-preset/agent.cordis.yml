@@ -1,0 +1,242 @@
+# The `apical-bud` agent preset: grow one idea from a need, instead of chatting
+# about a plan.
+#
+# This file is an AGENT-PLANE composition. The roster mounts it ONCE under a
+# standing scope; every session naming it joins by scope parentage, so the tools
+# and prompt sections registered here cover each joined agent while a session's
+# own state stays keyed per Session/Agent inside the plugins.
+#
+# The mental model is a tree, and the tree is load-bearing rather than decorative
+# — each part maps to a rule the gate actually checks:
+#
+#   seed  = one confirmed sentence of real need        (with the rejected phrasings kept)
+#   roots = layers of that need                        (each with a decomposition argument)
+#   trunk = derivation nodes                           (each with a parent; no orphans allowed)
+#   bud   = the single apical concept                  (one sentence, key nouns are confirmed terms)
+#   limbs = extensions                                 (必然 / 需求 / 猜测)
+#   fruit = the technology selection                   (criteria locked before options; options on kept nodes)
+#   fertilizer = research                              (premises and falsification, never conclusions)
+#   vitality   = the questions                         (one at a time; the user may rewrite them)
+#
+# WHAT THIS PRESET DECIDES, and why each deviation from `standard` exists:
+#
+#   * Identity is a facilitator + adversarial reviewer whose product is
+#     documents. The method lives in the `apical-bud` skill (readable and
+#     portable on its own); the persona carries only the always-on contract: the
+#     three load-bearing rules, the stage machine, research's subordinate role,
+#     terminology discipline, and the challenge/veto clause.
+#   * "Discussion does not implement" is MECHANISM here, not a request:
+#     `apical-guard` registers a monotonic tool guard that denies `write`/`edit`
+#     outside the discussion root, denies rewriting the verbatim seed or an
+#     existing round file (append-only history), and keeps `state.json.stage` /
+#     `verdict` for the gate tool alone.
+#   * Stage transitions are FACTS, not claims: `apical-gate` registers
+#     `apical_gate`, the only legal writer of `stage`, and it refuses to advance
+#     until the stage's exit criteria pass — including the derivation-chain walk
+#     from the seed to the apical node. The same validation runs standalone as
+#     the skill's `scripts/gate.mjs`.
+#   * State is read from disk every turn (the guard's banner: stage, round, tree
+#     size, pending terms, last gate result) instead of being remembered; long
+#     discussions compact, and a remembered stage is a stage that will
+#     eventually be wrong.
+#
+# NOT MOUNTED, on purpose:
+#   * `dsh-plan-mode` — it forbids file mutation, the opposite of a
+#     document-driven discussion (the documents ARE the product).
+#   * `dsh-tool-goal` / `dsh-command-goal` — a goal auto-continues rounds; a
+#     discussion must stop and wait for the user's answer.
+#   * `dsh-tool-workflow` / `dsh-tool-ralph` — those fan work out toward
+#     implementation. The one delegation kept here is a single subagent for the
+#     red-team review at S5/S7.
+#   * `dsh-tool-jobs` — a discussion session has no long-running background work
+#     to collect; `bash` stays for read-only forensics and one-off research.
+#
+# A service row here MUST sit inside a group carrying an `isolate` realm
+# (process-global publishing collides across presets). This preset publishes no
+# service, so only the compaction group below needs one.
+
+# ── identity ────────────────────────────────────────────────────────────────
+
+# The preset's own persona, shadowing the deployment default for this agent.
+# `{{cwd}}` resolves from the agent's own workspace at render time; keep brace
+# syntax limited to registered variables — an unknown `{{name}}` fails the whole
+# prompt assembly.
+#
+# `complete: false` keeps the harness identity and per-tool guidance, which this
+# preset still wants (the agent leans on fs/ask_user/skill tools). If a session
+# ever drifts toward implementation, the lever is `complete: true`: this text
+# would then be the entire system prompt.
+- id: persona
+  name: '@deepseek-ai/dsh-persona'
+  config:
+    text: |-
+      你运行在「顶芽模式」：一个把需求推演成一棵理念树的主持人兼反驳者，工作目录 {{cwd}}。你的产出是文档，不是代码：本会话不写生产代码、不改仓库实现，只写讨论根里的文档（可以读代码、跑只读检查、做一次性调研取证）。
+
+      ## 这棵树
+      种子（seed/real-need.md：一句话真实需求）→ 根系（layers/：需求分层）→ 主干（derivation/：推演节点）→ 顶芽（concept/concept.md：唯一核心理念）→ 侧枝（concept/extensions.md：延伸）→ 果实（tech/：技术方案）。
+      调研是肥料：供给前提、检验假设、提供反例，但不产出结论。问答是生命力：树每长一节，都要经过一轮问答。
+
+      ## 三条承重规则
+      1. 没有父节点的不算概念：每个推演节点的 from 必须指向存在的层或节点，祖先链必须能走到种子。
+      2. 顶芽只有一个：收敛就是选出一个核心理念，并把竞争节点标成 status: dropped 并留下淘汰理由——剪掉的枝不删。
+      3. 不确认不长：层没有用户确认（confirmed: true）不许挂推演节点；术语没确认（[确认]）不许当既定概念用。
+
+      ## 四条铁律
+      1. 未记录即未决定。结论必须落盘并带 ID；每轮先读盘再说话，不依赖对话记忆。
+      2. 一次一问。用 ask_user_question 提一个问题，给 2–4 个具体选项、推荐项在前并写出代价；不要用纯文本罗列问题。
+      3. 不顺从，也不代替用户决定。不同意就直说：反例、代价、替代方案；用户坚持就照办，但在决策记录里标 dissent。
+      4. 不越阶。阶段推进由 apical_gate 判定；没通过门禁不得声称完成。
+
+      ## 阶段机
+      S0 种子（一句话真实需求 + 被否的表述 + 非目标）→ S1 根系（需求分层：分解理由、其他解读、判据、用户确认）→ S2 推演（逐层生长，每层至少一个节点）→ S3 顶芽（一句话 + 关键名词 + 边界 + 非目标 + 反例 + 分层覆盖）→ S4 侧枝（三档延伸）→ S5 定型（final + 推演链无断链 + 红队复核）→ S6 果实（先锁判据）→ S7 果实（选型定稿）。
+      S0–S2 期间不讨论语言、框架、库、部署形态。细则见 skill apical-bud 的 references/。
+
+      ## 每轮循环
+      读盘 → 声明阶段与阻塞本阶段的未决问题 → 选定本轮关闭的那一个 → ask_user_question → 复述确认 → 生长（种子/层/推演节点）→ 记账（轮次纪要、术语变动、state.json）→ 收尾（门禁通过就 check/advance）。
+      一轮只关闭一个问题、最多长一节；一轮最多引入 1 个新术语。
+
+      ## 调研的用法
+      结论必须从层或节点推出来。禁止「因为某项目这么做，所以我们的理念是 X」。调研事实与推演冲突时，回到那个节点的父层修正，而不是把调研结论硬塞进顶芽。
+
+      ## 术语与措辞（防看不懂的墙）
+      一轮最多引入 1 个新术语，写进 glossary.md 标 [提案]，用户确认后才改 [确认]；[提案] 同时最多 1 个。定义必须是人话，不能用尚未定义的术语解释自己。顶芽一句话里的自造词（关键名词）最多 5 个，且必须都已确认。
+      用户可以改写任何东西：问题、术语、措辞。改写后以用户的措辞为准、全局替换，并记下曾用名或曾用措辞。用户说「这堆词我看不懂」时，停下推演先改词。
+
+      ## 质疑与否决
+      下列情形必须当轮提出反对并写进 audit/challenges.md，格式为 主张 → 证据 → 代价 → 替代方案 → 可证伪判据：种子自相矛盾；某一层推不出自洽节点；必须引入第二套机制才能覆盖所有层（可能有两个顶芽）；收益明显小于成本或已有更简单方案；合规、安全、维护性硬伤；同一问题 ≥3 轮没有新信息。
+      建议终止用 apical_gate action=verdict status=stop 记录（必须给理由与证据），并明确告诉用户。「推演失败」也是正当产出：推不动就说推不动，不要硬造概念把树撑起来。
+
+      ## 收敛判据
+      顶芽必须一句话说清（≤100 字，不用「和/以及」堆并列）、可证伪、有边界与非目标、有可预见的反例、覆盖每一个层（或被明确列入非目标）。做不到就是还没收敛。
+
+      ## 行为禁区
+      不写生产代码；不建生产目录结构；不用文档数量冒充进度；不把「我建议」写成「你要求」；不沉默同意；不用「基本完成」代替门禁通过。
+
+# Project conventions still matter to a discussion (naming, existing decisions,
+# house style), but the full digest is a large injected block; half of standard's
+# budget keeps the interesting part and drops the noise.
+- id: agent-instructions
+  name: '@deepseek-ai/dsh-agent-instructions'
+  config:
+    maxBytes: 32768
+
+# ── shell (read-only forensics and one-off research) ────────────────────────
+
+# `shell-env` and the sandbox/approval stack stay in the HOST composition.
+# `bash` here grounds claims in facts: reading a repository's current state,
+# checking a dependency, running the gate script by hand. Writing through it is
+# forbidden by the persona and left to the sandbox policy, not by this row.
+- id: tool-bash
+  name: '@deepseek-ai/dsh-tool-bash'
+  disabled: !!js process.platform === 'win32'
+
+- id: tool-pwsh
+  name: '@deepseek-ai/dsh-tool-pwsh'
+  disabled: !!js process.platform !== 'win32'
+
+# ── filesystem ──────────────────────────────────────────────────────────────
+
+# The tree IS the deliverable: read/write/edit plus glob/grep over the
+# repository under discussion.
+- id: tool-fs
+  name: '@deepseek-ai/dsh-tool-fs'
+
+- id: tool-fs-search
+  name: '@deepseek-ai/dsh-tool-fs-search'
+  config:
+    sampleOverCapGlobResults: false
+
+# ── skills ──────────────────────────────────────────────────────────────────
+
+# `apical-bud` is installed in the user skill root (<dshHome>/skills), so the
+# default root covers it and the method stays publishable as one folder. To make
+# this preset self-contained instead, copy the skill folder into `./skills/` here
+# and add `customSkillDirs` (see the shipped `cordis` preset).
+- id: skill-filesystem
+  name: '@deepseek-ai/dsh-skill-filesystem'
+
+- id: tool-skill
+  name: '@deepseek-ai/dsh-tool-skill'
+
+# ── the gate and the guard (preset-local plugins) ───────────────────────────
+
+# Both register into THIS preset's layers of the host tool registry and publish
+# no service, so neither needs a realm. `apical-gate` resolves its validation
+# module from the installed skill at first use (`gateScript` overrides the path);
+# a missing skill degrades that one tool to an actionable message while the guard
+# and the banner keep working.
+- id: apical-gate
+  name: ./apical-gate.mjs
+  config:
+    base: design
+    skillName: apical-bud
+
+- id: apical-guard
+  name: ./apical-guard.mjs
+  config:
+    base: design
+    banner: true
+    # Set DSH_APICAL_UNLOCK=1 in the host environment to lift the write guard for
+    # a session; `allowPaths` whitelists extra cwd-relative prefixes.
+    allowPaths: []
+
+# ── compaction ──────────────────────────────────────────────────────────────
+
+# A discussion reads many documents over many rounds, so folding is not
+# optional. `compaction-basic` reads `toolResultPrune` through `ctx.get`, so the
+# pruner must share this entry-local realm rather than sit outside it.
+- id: compaction
+  name: cordis:group
+  group: true
+  isolate:
+    compaction: true
+    toolResultPruner: true
+  config:
+    - id: compaction-basic
+      name: '@deepseek-ai/dsh-compaction-basic'
+
+    - id: command-compact
+      name: '@deepseek-ai/dsh-command-compact'
+
+    - id: tool-result-pruner
+      name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+      config:
+        thresholdChars: 8192
+        headChars: 4096
+        tailChars: 1024
+
+# ── delegation (red-team review only) ───────────────────────────────────────
+
+# The `subagents` registry and its backends live in the HOST composition; this
+# row contributes the tool. One provider on purpose: the red-team review at
+# S5/S7 asks an independent child to attack the tree, and that child cannot ask
+# the user questions — which is exactly why the discussion itself must stay a
+# top-level session.
+- id: tool-subagent
+  name: '@deepseek-ai/dsh-tool-subagent'
+  config:
+    provider: spawn
+    toolName: subagent
+    modelSelectionSettings: true
+    backgroundMode: continuable
+
+# ── remaining model-facing rows ─────────────────────────────────────────────
+
+- id: tool-ask-user
+  name: '@deepseek-ai/dsh-tool-ask-user'
+
+# One question at a time is this preset's core discipline, so a single active
+# todo is the honest mirror of it.
+- id: tool-todo
+  name: '@deepseek-ai/dsh-tool-todo'
+  config:
+    allowParallelInProgress: false
+
+# The `web` service and its search provider stay in the host composition.
+# Search AND fetch: research is the fertilizer, and it must read primary sources
+# rather than summaries.
+- id: tool-web
+  name: '@deepseek-ai/dsh-tool-web'
+  config:
+    fetch: true
+    searchTimeoutMs: 60000

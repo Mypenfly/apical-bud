@@ -88,5 +88,5 @@ whenToUse: "用户想在想清楚做什么之前先讨论（我们聊聊这个�
 | `references/apical.md` | S3–S5 收敛、侧枝、定稿与红队复核 |
 | `references/tech-selection.md` | S6–S7 判据、证据分级、退出成本 |
 | `references/doc-conventions.md` | 目录 / ID / frontmatter / 标题 / 术语表 / state.json（门禁契约） |
-| `templates/` | 18 份可直接复制的文档模板 |
+| `templates/` | 17 份可直接复制的文档模板 |
 | `scripts/gate.mjs` | 零依赖门禁校验器（模块 + CLI） |

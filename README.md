@@ -1,5 +1,7 @@
 # apical-bud（顶芽）
 
+[English](README.en.md) | 中文
+
 **开发前的理念推演方法论**：从一句可能模糊的需求（种子）出发，把它分层（根系），逐层推演（主干），收敛到**唯一一个核心理念**（顶芽）及其延伸（侧枝）；理念定稿之后，再据需求、扩展性、应用场景推出技术方案（果实）。
 
 ```
@@ -21,15 +23,18 @@
 **DSH（DeepSeek Harness）**：
 
 ```bash
-git clone <this-repo> ~/.dsh/skills/apical-bud
+git clone git@github.com:Mypenfly/apical-bud.git ~/.dsh/skills/apical-bud
+
+# 可选：装上会话装配层（常驻身份、写守卫、apical_gate 工具、状态横幅）
+~/.dsh/skills/apical-bud/dsh-preset/install.sh
 ```
 
-配套的 preset（会话级装配：常驻身份、写守卫、门禁工具、状态横幅）见 `~/.dsh/.agent-presets/apical-bud/`。只装 skill 也能用：模型会在需要时加载它，或你用 `/apical-bud` 手动调用。
+`dsh-preset/` 里的预设会把三条承重规则变成机制：`write`/`edit` 只能写讨论根、用户原话与既有轮次纪要只追加、`state.json.stage` 只能由 `apical_gate` 在出口条件通过后推进。只装 skill 也能用：模型会在需要时加载它，或你用 `/apical-bud` 手动调用。细节见 [`dsh-preset/README.md`](dsh-preset/README.md)。
 
 **Claude Code / 其他兼容 SKILL.md 的宿主**：
 
 ```bash
-git clone <this-repo> ~/.claude/skills/apical-bud
+git clone git@github.com:Mypenfly/apical-bud.git ~/.claude/skills/apical-bud
 ```
 
 门禁脚本是零依赖 Node ESM，任何宿主里都能跑：
@@ -77,8 +82,10 @@ references/derivation.md       S2 推演规则、调研的用法、回退时机
 references/apical.md           S3–S5 收敛、侧枝、定稿与红队复核
 references/tech-selection.md   S6–S7 判据、证据分级、退出成本
 references/doc-conventions.md  文档规范（门禁契约）
-templates/                     18 份文档模板
+templates/                     17 份文档模板
 scripts/gate.mjs               零依赖门禁校验器（模块 + CLI）
+dsh-preset/                    DSH 会话装配层：persona、写守卫、apical_gate 工具、状态横幅、install.sh、自检
+README.md / README.en.md       中文 / English
 ```
 
 ## 出处与许可
