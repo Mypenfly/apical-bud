@@ -16,8 +16,9 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { DEFAULT_BASE, appendLog, discoverRoot, readState, stamp, writeState } from './lib/apical-state.mjs'
 
 /** Cordis plugin name used by loader diagnostics. */
@@ -42,6 +43,11 @@ const STAGE_REFERENCE = {
 
 const VERDICT_LABEL = { continue: '继续', pivot: '转向', stop: '终止' }
 
+/** One-line message from an unknown thrown value. */
+function messageOf(error) {
+  return String((error && error.message) || error)
+}
+
 /** Minimal JSON schema compiler for tool parameters (zero dependencies). */
 function toJsonSchema(spec) {
   const properties = {}
@@ -62,44 +68,121 @@ export function apply(ctx, config) {
   const skillName = typeof config.skillName === 'string' ? config.skillName : 'apical-bud'
   const configuredScript = typeof config.gateScript === 'string' ? config.gateScript : undefined
 
-  /** Locate and import the skill's gate module once per mount. */
-  let gatePromise
-  const gateModule = (probe) => {
-    if (gatePromise === undefined) {
-      gatePromise = (async () => {
-        const candidates = []
-        if (configuredScript !== undefined) candidates.push(resolve(configuredScript))
-        try {
-          const list = await probe()
-          const skill = list.find((entry) => entry.name === skillName)
-          const resourceBase = skill?.resourceBase
-          if (resourceBase !== undefined && resourceBase.kind === 'directory') {
-            candidates.push(join(resourceBase.path, 'scripts', 'gate.mjs'))
-          }
-        } catch {
-          // Skill registry unavailable — the configured path is still tried.
-        }
-        for (const candidate of candidates) {
-          if (!existsSync(candidate)) continue
-          try {
-            return { module: await import(pathToFileURL(candidate).href), path: candidate }
-          } catch (error) {
-            return { error: `门禁脚本加载失败: ${candidate}: ${String((error && error.message) || error)}` }
-          }
-        }
-        return {
-          error:
-            `找不到门禁脚本。请安装 skill "${skillName}"（例如 git clone <repo> ${'$DSH_HOME'}/skills/${skillName}），`
-            + '或在 preset 的 apical-gate 行里配置 gateScript: /绝对路径/scripts/gate.mjs。',
-        }
-      })().then((result) => {
-        // A resolution failure is not cached: installing the skill mid-session
-        // should fix the tool without restarting the host.
-        if (result.error !== undefined) gatePromise = undefined
-        return result
-      })
+  /** This plugin's own directory, i.e. the preset directory. */
+  const presetDir = dirname(fileURLToPath(import.meta.url))
+
+  /**
+   * Ask the skill registry where the skill lives.
+   *
+   * `ctx.get(name)` is the sanctioned OPTIONAL lookup: cordis throws
+   * `cannot get property "<name>" without inject` when an uninjected service is
+   * read through the property proxy, which is exactly how the first version of
+   * this row failed — the throw was swallowed, the candidate list stayed empty,
+   * and the tool reported "找不到门禁脚本" while the skill was installed and the
+   * registry was answering the session's catalog normally. Both routes are tried
+   * because either may exist.
+   * @returns `{ candidates, note }` — candidate paths plus what the registry said.
+   */
+  const probeRegistry = async (exec) => {
+    let registry
+    try {
+      registry = typeof ctx.get === 'function' ? ctx.get('skills') : undefined
+    } catch (error) {
+      registry = undefined
+      void error
     }
-    return gatePromise
+    if (registry === undefined) {
+      try {
+        registry = ctx.skills
+      } catch (error) {
+        return { candidates: [], note: `技能注册表不可读：${messageOf(error)}` }
+      }
+    }
+    if (registry === undefined) return { candidates: [], note: "技能注册表不可用（ctx.get('skills') 返回 undefined）" }
+    try {
+      const list = await registry.list({
+        scope: exec?.agent ?? ctx,
+        cwd: exec?.agent?.session?.header?.cwd,
+        signal: exec?.signal,
+      })
+      const skill = Array.isArray(list) ? list.find((entry) => entry.name === skillName) : undefined
+      if (skill === undefined) {
+        const names = Array.isArray(list) ? list.map((entry) => entry.name).join(', ') : '(非数组)'
+        return { candidates: [], note: `注册表返回 ${Array.isArray(list) ? list.length : '?'} 个技能，其中没有「${skillName}」：${names}` }
+      }
+      const resourceBase = skill.resourceBase
+      if (resourceBase === undefined || resourceBase.kind !== 'directory') {
+        return { candidates: [], note: `「${skillName}」没有目录型 resourceBase：${JSON.stringify(resourceBase)}` }
+      }
+      return { candidates: [join(resourceBase.path, 'scripts', 'gate.mjs')], note: `命中注册表：${resourceBase.path}` }
+    } catch (error) {
+      return { candidates: [], note: `技能注册表查询失败：${messageOf(error)}` }
+    }
+  }
+
+  /**
+   * Resolve and import the skill's gate module. Every candidate is tried in
+   * order — explicit config, environment, skill registry, then the filesystem
+   * layouts a skill and this preset actually take on disk — so the tool cannot
+   * be defeated by one broken seam. Only a success is cached; a failure is
+   * retried on the next call, so installing the skill mid-session fixes it
+   * without restarting the host.
+   */
+  let gateCache
+  const loadGate = async (exec) => {
+    if (gateCache !== undefined) return gateCache
+    const tried = []
+    const add = (value, why) => {
+      if (typeof value !== 'string' || value.trim() === '') return
+      const path = resolve(value)
+      if (!tried.some((entry) => entry.path === path)) tried.push({ path, why })
+    }
+    add(configuredScript, 'preset 配置 gateScript')
+    add(process.env.APICAL_GATE_SCRIPT, '环境变量 APICAL_GATE_SCRIPT')
+    const probe = await probeRegistry(exec)
+    for (const candidate of probe.candidates) add(candidate, '技能注册表 resourceBase')
+
+    const dshHome = process.env.DSH_HOME ?? join(homedir(), '.dsh')
+    const agentsHome = process.env.DSH_AGENTS_HOME ?? join(homedir(), '.agents')
+    add(join(dshHome, 'skills', skillName, 'scripts', 'gate.mjs'), '$DSH_HOME/skills')
+    add(join(agentsHome, 'skills', skillName, 'scripts', 'gate.mjs'), '$DSH_AGENTS_HOME/skills')
+    add(join(presetDir, '..', 'scripts', 'gate.mjs'), '仓库布局（dsh-preset/ 的上级就是 skill 根）')
+    add(join(presetDir, '..', '..', 'skills', skillName, 'scripts', 'gate.mjs'), '已安装布局（$DSH_HOME/.agent-presets/<id>/）')
+    const cwd = exec?.agent?.session?.header?.cwd
+    if (typeof cwd === 'string' && cwd !== '') {
+      add(join(cwd, '.dsh', 'skills', skillName, 'scripts', 'gate.mjs'), '项目根 .dsh/skills')
+      add(join(cwd, '.agents', 'skills', skillName, 'scripts', 'gate.mjs'), '项目根 .agents/skills')
+    }
+
+    const missing = []
+    for (const candidate of tried) {
+      if (!existsSync(candidate.path)) {
+        missing.push(candidate)
+        continue
+      }
+      try {
+        const module = await import(pathToFileURL(candidate.path).href)
+        gateCache = { module, path: candidate.path }
+        return gateCache
+      } catch (error) {
+        return {
+          error: `门禁脚本存在但加载失败：${candidate.path}（来源：${candidate.why}）\n${messageOf(error)}`,
+        }
+      }
+    }
+
+    // Never report "not found" without the evidence: these lines are what turns
+    // a wrong root-cause theory into a two-minute fix.
+    return {
+      error: [
+        `找不到门禁脚本（skill「${skillName}」的 scripts/gate.mjs）。已尝试的路径都不存在：`,
+        ...missing.map((entry) => `  ✗ ${entry.path}   ← ${entry.why}`),
+        `技能注册表：${probe.note}`,
+        '修法任选其一：① git clone <repo> 到 '
+        + `${join(dshHome, 'skills', skillName)}；② 在本 preset 的 apical-gate 行里配置 `
+        + 'gateScript: <仓库>/scripts/gate.mjs；③ 设环境变量 APICAL_GATE_SCRIPT 指向该文件。',
+      ].join('\n'),
+    }
   }
 
   ctx.tools.register({
@@ -150,7 +233,7 @@ export function apply(ctx, config) {
         }
         const state = stateRead.state
 
-        const loaded = await gateModule(() => ctx.skills.list({ scope: exec?.agent ?? ctx, cwd: exec?.agent?.session?.header?.cwd, signal: exec?.signal }))
+        const loaded = await loadGate(exec)
         if (loaded.error !== undefined) return { text: loaded.error }
         const gate = loaded.module
         const report = gate.validate(root)

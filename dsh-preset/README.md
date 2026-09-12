@@ -38,5 +38,8 @@ node ~/.dsh/.agent-presets/apical-bud/selftest.mjs
 |---|---|
 | `agent.cordis.yml` → `apical-guard.config.base` | 讨论根所在目录（默认 `design`） |
 | `agent.cordis.yml` → `apical-guard.config.allowPaths` | 放行额外可写路径前缀 |
-| `agent.cordis.yml` → `apical-gate.config.gateScript` | 显式指定 skill 门禁脚本路径（skill 不在默认位置时用） |
+| `agent.cordis.yml` → `apical-gate.config.gateScript` | 显式指定 skill 门禁脚本路径 |
+| 环境变量 `APICAL_GATE_SCRIPT` | 同上，但不用改配置文件 |
+
+门禁脚本的解析顺序：`gateScript` → `APICAL_GATE_SCRIPT` → 技能注册表给出的 skill 目录 → `$DSH_HOME/skills/<name>` → `$DSH_AGENTS_HOME/skills/<name>` → 仓库布局的上级目录 → 已安装布局的 `../../skills/<name>` → 会话工作目录下的 `.dsh/skills` 与 `.agents/skills`。全都命中不了时，工具会**逐条列出试过的路径与注册表的答复**，而不是只说一句「找不到」。
 | 环境变量 `DSH_APICAL_UNLOCK=1` | 临时解除写守卫（给用户用的，不是给模型用的） |

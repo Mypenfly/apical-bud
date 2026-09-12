@@ -15,7 +15,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const here = dirname(fileURLToPath(import.meta.url))
 
@@ -62,7 +62,24 @@ const w = (rel, content) => {
 const state = () => JSON.parse(readFileSync(join(root, 'state.json'), 'utf8'))
 const writeState = (value) => writeFileSync(join(root, 'state.json'), JSON.stringify(value, null, 2), 'utf8')
 
-function mockContext() {
+/**
+ * Mock Cordis context.
+ *
+ * `registry` selects how the skills service is exposed, and the default is the
+ * one that matters: real cordis THROWS
+ * `cannot get property "skills" without inject` when a plugin reads an
+ * uninjected service through the property proxy. The first version of
+ * `apical-gate.mjs` swallowed that throw and reported "找不到门禁脚本" while the
+ * skill was installed — so the faithful mode is the default here, and the
+ * `absent` mode exercises the filesystem fallbacks.
+ */
+function mockContext(options = {}) {
+  const mode = options.registry ?? 'throwing'
+  const registry = {
+    async list() {
+      return [{ name: 'apical-bud', description: '', invocation: { modelInvocable: true, userInvocable: true }, source: 'user-dsh', provider: 'filesystem', resourceBase: { kind: 'directory', path: options.skillDir ?? skillDir } }]
+    },
+  }
   const tools = []
   const guards = []
   const listeners = new Map()
@@ -82,13 +99,33 @@ function mockContext() {
         return () => {}
       },
     },
-    skills: {
-      async list() {
-        return [{ name: 'apical-bud', description: '', invocation: { modelInvocable: true, userInvocable: true }, source: 'user-dsh', provider: 'filesystem', resourceBase: { kind: 'directory', path: skillDir } }]
-      },
+    get(name) {
+      return name === 'skills' && mode !== 'absent' ? registry : undefined
     },
   }
+  if (mode === 'value') {
+    ctx.skills = registry
+  } else {
+    // Same failure the host produced: property access throws, `ctx.get` answers.
+    Object.defineProperty(ctx, 'skills', {
+      get() {
+        throw new Error('cannot get property "skills" without inject')
+      },
+    })
+  }
   return { ctx, tools, guards, listeners }
+}
+
+/**
+ * Copy the gate plugin to a directory whose filesystem fallbacks cannot hit a
+ * real skill, so a resolver test can prove WHICH route resolved the module.
+ */
+function isolatedPresetDir(label) {
+  const dir = join(sandbox, `.plugin-${label}`)
+  mkdirSync(join(dir, 'lib'), { recursive: true })
+  writeFileSync(join(dir, 'apical-gate.mjs'), readFileSync(join(here, 'apical-gate.mjs'), 'utf8'))
+  writeFileSync(join(dir, 'lib', 'apical-state.mjs'), readFileSync(join(here, 'lib', 'apical-state.mjs'), 'utf8'))
+  return dir
 }
 
 const fakeAgent = (parent = undefined) => {
@@ -274,6 +311,39 @@ seed → L-002 → N-001 → N-003
   result = await call({ action: 'advance' })
   ok('终止后拒绝推进任何阶段', result.text.includes('终止'), result.text.split('\n')[0])
   ok('gates.log 有记录', readFileSync(join(root, 'audit', 'gates.log'), 'utf8').split('\n').length > 5)
+
+  process.stdout.write('\n[10] 门禁脚本解析（回归：cordis 未注入服务）\n')
+  const isolated = isolatedPresetDir('isolated')
+  const statusCall = (instance) => instance.tools
+    .find((definition) => definition.name === 'apical_gate')
+    .execute({ action: 'status', root: join(root) }, { agent: fakeAgent().agent, signal: new AbortController().signal })
+
+  // A. 注册表可用、但 ctx.skills 属性访问抛错（线上故障的形态）。
+  //    隔离目录里没有任何文件系统回退路径，所以「成功」只可能来自 ctx.get('skills')。
+  const resolvable = mockContext({ registry: 'throwing', skillDir })
+  await (await import(pathToFileURL(join(isolated, 'apical-gate.mjs')).href)).apply(resolvable.ctx, { base: 'design', skillName: 'apical-bud' })
+  const reportA = await statusCall(resolvable)
+  ok('属性访问抛错时仍经 ctx.get 解析到脚本', reportA.text.includes('门禁:') && !reportA.text.includes('找不到门禁脚本'), reportA.text.split('\n').slice(0, 2).join(' / '))
+
+  // B. 注册表完全不可用 → 环境变量回退仍应生效。
+  process.env.APICAL_GATE_SCRIPT = join(skillDir, 'scripts', 'gate.mjs')
+  const envOnly = mockContext({ registry: 'absent' })
+  await (await import(pathToFileURL(join(isolated, 'apical-gate.mjs')).href)).apply(envOnly.ctx, { base: 'design', skillName: 'apical-bud' })
+  const reportB = await statusCall(envOnly)
+  ok('注册表不可用时走环境变量回退', reportB.text.includes('门禁:'), reportB.text.split('\n')[1])
+  delete process.env.APICAL_GATE_SCRIPT
+
+  // C. 全都不可用 → 必须报出取证细节，而不是一句「找不到」。
+  const previousHome = process.env.DSH_HOME
+  process.env.DSH_HOME = join(sandbox, 'empty-home')
+  const nothing = mockContext({ registry: 'absent' })
+  await (await import(pathToFileURL(join(isolated, 'apical-gate.mjs')).href)).apply(nothing.ctx, { base: 'design', skillName: 'apical-bud' })
+  const reportC = await statusCall(nothing)
+  ok('失败时列出已尝试路径', reportC.text.includes('已尝试的路径都不存在') && reportC.text.includes('✗ '), reportC.text.split('\n')[0])
+  ok('失败时说明注册表为何没给出路径', reportC.text.includes('技能注册表：'), reportC.text.split('\n').filter((l) => l.includes('技能注册表')).join(' '))
+  ok('失败时给出三条修法', reportC.text.includes('gateScript') && reportC.text.includes('APICAL_GATE_SCRIPT') && reportC.text.includes('skills/apical-bud'), reportC.text.split('\n').slice(-1)[0].slice(0, 80))
+  if (previousHome === undefined) delete process.env.DSH_HOME
+  else process.env.DSH_HOME = previousHome
 
   process.stdout.write(failures === 0 ? '\n全部通过 ✓\n' : `\n失败 ${failures} 项 ✗\n`)
   if (failures === 0) rmSync(sandbox, { recursive: true, force: true })
