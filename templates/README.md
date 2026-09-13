@@ -23,8 +23,8 @@ updated: YYYY-MM-DD
 | 种子 | `seed/real-need.md` | 未确认 |
 | 根系（需求分层） | `layers/` | 未开始 |
 | 主干（理念推演） | `derivation/` | 未开始 |
-| 顶芽（核心理念） | `concept/concept.md` | 未开始 |
-| 侧枝（延伸） | `concept/extensions.md` | 未开始 |
+| 顶芽（唯一的理念概念） | `concept/concept.md` | 未开始 |
+| 侧枝（机制命题 + 概念延伸） | `concept/extensions.md` | 未开始 |
 | 果实（技术方案） | `tech/selection.md` | 未开始（S5 之后） |
 | 肥料（调研） | `derivation/` 各节点的“调研佐证” | —— |
 | 生命力（问答） | `questions/`、`rounds/` | —— |
@@ -32,7 +32,9 @@ updated: YYYY-MM-DD
 ## 怎么读这棵树
 
 - **推演，不是灵感**：每个概念节点都写清它从哪个父节点推出来；祖先链断掉的节点不是推演，是插进来的想法。
-- 被否的枝不删：淘汰的推演节点保留在 `derivation/`，分层里被否的解读保留在层文件里。
+- **气质在顶芽，保证在侧枝**：`concept.md` 是这一屏的意向（可解释、能生成）；`M-` 机制命题是"靠什么保证它"，技术选型照着 `M-` 走。
+- 被否的枝不删：淘汰的推演节点保留在 `derivation/`（带淘汰理由与**复活条件**），分层里被否的解读保留在层文件里。
+- **你可以反悔**：任何已定的东西都能撤回，不需要理由。旧内容不删，标 `superseded-by:`；受影响的判据标 `stale: true`，由 `audit/recheck-*.md` 结算。
 - 决策在 `decisions/`，异议在 `audit/challenges.md`（含被驳回的），裁决在 `audit/verdict.md`。
 - 术语表 `glossary.md` 是**你和我的共同语言**：你可以改写任何术语，我负责全局替换并记下曾用名。
 - 机器可读状态在 `state.json`；门禁判定以文件和它为准，不以对话记忆为准。

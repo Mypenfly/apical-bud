@@ -36,19 +36,21 @@ design/<slug>/
   derivation/
     N-00N-<slug>.md          推演节点（主干）；淘汰的节点保留
   concept/
-    concept.md               ★ 顶芽：核心理念
-    extensions.md            ★ 侧枝：延伸
+    concept.md               ★ 顶芽：唯一的理念概念（气质/姿态，可解释、能生成）
+    extensions.md            ★ 侧枝：M- 机制命题（可证伪，落为选型限制）+ E- 概念延伸（档位）
   tech/
-    criteria.md              S6：判据（先锁版）
+    criteria.md              S6：判据（先锁版；来源含 M-00N）
     options.md               S6：候选方案
     selection.md             ★ 果实：选型定稿
-    probes/                  E2 实测原型（一次性取证产物）
+    probes/                  E2 实测原型与结果（一次性取证产物）
+    handoff-<主题>.md        交给用户的实验交接（含可直接复制的提示词）
   questions/                 Q-00N 待决问题
   decisions/                 D-00N 决策
   rounds/                    round-001.md …（编号连续）
   audit/
     challenges.md            异议记录（含被驳回的）
     verdict.md               项目裁决：继续/转向/终止
+    recheck-<S3|S5|S6|S7>.md 全量重判记录（推进到该阶段之前必做）
     gates.log                门禁运行日志（工具追加，不要手写）
 ```
 
@@ -61,15 +63,26 @@ design/<slug>/
 | `R-000` | 用户原话 | `seed/` | 固定编号，只有一个 |
 | `L-` | 需求层 | `layers/` | 每个一个文件，`parent` 指向 `seed` 或另一个 `L-` |
 | `N-` | 推演节点 | `derivation/` | 每个一个文件，`from` 指向层或节点 |
+| `M-` | 机制命题 | `concept/extensions.md` | 文件内小节；可证伪、带反例，`服务: 第 N 条 ← N-00N` 挂到概念与节点上，是选型判据的来源 |
 | `D-` | 决策 | `decisions/` | 每个一个文件 |
 | `Q-` | 待决问题 | `questions/` | 每个一个文件，`blocking` 指向阶段 |
-| `E-` | 延伸（侧枝） | `concept/extensions.md` | 文件内 `##` 小节 |
-| `K-` | 选型判据 | `tech/criteria.md` | 文件内小节 |
+| `E-` | 概念延伸（侧枝） | `concept/extensions.md` | 文件内 `##` 小节，带档位 |
+| `K-` | 选型判据 | `tech/criteria.md` | 文件内小节，`来源:` 可为 `M-` |
 | `O-` | 候选方案 | `tech/options.md` | 文件内小节 |
 | `X-` | 异议 | `audit/challenges.md` | 文件内小节 |
 | `V-` | 裁决 | `audit/verdict.md` | 文件内小节 |
 
 规则：ID 全局唯一（门禁检查跨目录重复）；**不复用已删除的编号**；三位数字递增。
+
+### 反悔（取代、不删除）
+
+| 字段 | 写在哪 | 含义 |
+|---|---|---|
+| `supersedes:` | 新条目（层/节点/决策/机制/判据） | 它取代了哪个旧 ID |
+| `superseded-by:` | 旧条目 | 谁取代了它；**旧内容保持原样** |
+| `stale: true` | 受波及的判据/机制/层 | 因上游被撤回而待重判；重判后去掉或改写 |
+
+**树不删枝**：被取代的条目留在原处，加上 `superseded-by:` 一行。半年后"为什么当时不选它"的答案就在这里。
 
 ## 2.5 落盘时机（先讨论，再留痕）
 
@@ -103,6 +116,7 @@ title: <这一层问什么>
 parent: seed          # seed | R-000 | L-00N（必须存在）
 status: confirmed     # draft | confirmed
 confirmed: true       # 用户是否确认过这一层
+superseded-by:        # 被反悔时填取代它的 ID
 updated: YYYY-MM-DD
 ```
 
@@ -114,6 +128,8 @@ title: <推出来的主张>
 from: [L-001]         # 一个或多个：L-00N / N-00N，必须存在
 status: kept          # kept | dropped
 evidence: 无           # E1 | E2 | E3 | 无
+supersedes:           # 反悔时：它取代了哪个旧 ID
+superseded-by:        # 被反悔时：谁取代了它
 updated: YYYY-MM-DD
 ```
 
@@ -139,22 +155,25 @@ supersedes:
 ### 其他文档
 
 `concept.md`：`kind: apical` + `status: draft|final` + `stage`。
-`criteria.md`：`status: draft|locked` + `locked_at: "YYYY-MM-DD HH:MM"`。
+`extensions.md`：条目级字段 `类型:`（机制命题 / 概念延伸）、`服务:`（`M-` 必填，写成 `第 N 条 ← N-00N`：指向概念「它生成的主张」里的第 N 条与生出它的推演节点）、`档位:`（`E-` 必填）、`来源:`、`status:`（`kept|dropped`）、`supersedes:` / `superseded-by:`。
+`criteria.md`：`status: draft|locked` + `locked_at: "YYYY-MM-DD HH:MM"`；条目可带 `stale: true`。
 `options.md`：`created: "YYYY-MM-DD HH:MM"`（必须晚于 `criteria.md` 的 `locked_at`）。
 `selection.md`：`status: draft|final`。
-`extensions.md` / `challenges.md` / `verdict.md` / `glossary.md`：无强制 frontmatter。
+`audit/recheck-*.md`：每条待盘点项一个小节，带 `结论: 维持|复活`。
+`challenges.md` / `verdict.md` / `glossary.md`：无强制 frontmatter。
 
 ## 4. 门禁要求的标题与字段（逐字）
 
 | 文件 | 必须存在 | 必须有的字段行 |
 |---|---|---|
-| `seed/real-need.md` | `## 被否的表述`、`## 非目标` | `statement`（≤80 字）、`status: confirmed`；两节各 ≥1 条 |
-| `layers/L-00N-*.md` | `## 分解理由`、`## 其他解读（被否）`、`## 判据`、`## 用户确认` | `parent`、`confirmed: true`、`status: confirmed`；解读与判据各 ≥1 |
+| `seed/real-need.md` | `## 被否的表述`、`## 非目标`、`## 判定对齐的信号` | `statement`（≤80 字）、`status: confirmed`；前两节各 ≥1 条，信号节 ≥1 条 |
+| `layers/L-00N-*.md` | `## 分解理由`、`## 其他解读（被否）`、`## 判据`、`## 承接的信号`、`## 用户确认` | `parent`、`confirmed: true`、`status: confirmed`；解读与判据各 ≥1 |
 | `derivation/N-00N-*.md` | `## 推演`；保留节点还需 `## 反例`；淘汰节点还需 `## 淘汰理由` | `from`、`status`、`evidence` |
-| `concept/concept.md` | `## 核心概念（一句话）`、`## 关键名词`、`## 判据`、`## 边界`、`## 非目标`、`## 反例与失败边界`、`## 分层覆盖`、`## 淘汰的竞争节点`；S5 还需 `## 推演链`、`## 已知反对与回应` | 一句话 ≤100 字；关键名词 1–5 个且均为已确认术语；推演链从 `seed` 开始、逐跳合法、以 `N-` 收尾 |
-| `concept/extensions.md` | `## E-00N <名>`（≥3 个） | `- 档位:`（必然/需求/猜测）；需求档 `- 来源:` |
-| `tech/criteria.md` | `## K-00N <名>`（≥5 个） | `- 权重:`、`- 硬约束:`（是/否）、`- 来源:`（存在的 ID）；≥1 条硬约束 |
-| `tech/options.md` | `## O-00N <名>`（≥2 个） | `- 证据:`（E1/E2/E3）、`- 推演来源:`（采纳/备选项必须是**保留**的 N-，淘汰项可以是任何存在的 N-）；淘汰者 `- 拒绝理由:` |
+| `concept/concept.md` | `## 核心概念（一句话）`、`## 这意味着什么`、`## 这不意味着什么`、`## 它生成的主张`（≥3）、`## 关键名词`、`## 边界`、`## 非目标`、`## 反例与失败边界`、`## 承接了哪些层的什么`、`## 淘汰的竞争概念`；S5 还需 `## 推演链`、`## 已知反对与回应` | 一句话 ≤60 字；关键名词 1–3 个且均为已确认术语；推演链从 `seed` 开始、逐跳合法、以 `N-` 收尾（允许多条） |
+| `concept/extensions.md` | `## M-00N <机制名>`（带 `服务:`、`## 机制`、`## 反例`）、`## E-00N <延伸名>`（≥3 条） | `类型:`（机制命题/概念延伸）；`E-` 的 `- 档位:`（必然/需求/猜测）；需求档 `- 来源:` |
+| `audit/recheck-S3|S5|S6|S7.md` | 每条待盘点项（dropped 节点、被淘汰的主张、未验证假设、`stale` 文档）一条结论 | 结论词为「维持」或「复活」 |
+| `tech/criteria.md` | `## K-00N <名>`（≥5 个） | `- 权重:`、`- 硬约束:`（是/否）、`- 来源:`（存在的 ID，含 `M-00N`）；≥1 条硬约束 |
+| `tech/options.md` | `## O-00N <名>`（≥2 个） | `- 证据:`（E1/E2/E3）、`- 推演来源:`（采纳/备选项必须是**保留**的 N- 或 M-，淘汰项可以是任何存在的 N-/M-）；淘汰者 `- 拒绝理由:` 与 `- 复活条件:` |
 | `tech/selection.md` | `## 选定方案`、`## 判据对照`、`## 拒绝理由汇总`、`## 退出成本与迁移`、`## 未验证假设` | 五节均非空 |
 | `audit/challenges.md` | `## X-00N <题>` | 每条 `- 结论:` |
 | `glossary.md` | —— | `- **术语** [确认\|提案]：人话定义`；`[提案]` ≤1 个 |
@@ -170,11 +189,12 @@ supersedes:
 - **用户可以改写任何术语**：改写后全局替换，并在术语表的「曾用名」表里记一行。
 - `concept.md` 的「关键名词」必须全部是已确认术语，最多 5 个。
 
-## 6. 三条不变量
+## 6. 四条不变量
 
 1. **append-only**：`seed/R-000-original.md` 与 `rounds/*` 只追加。改写它们等于篡改讨论史。
 2. **决策只可取代、不可改写**：已 `accepted` 的决策要改内容，只能新建一个决策 `superseded` 它，并填 `supersedes:`。
-3. **树不删枝**：淘汰的推演节点保留（`status: dropped` + 淘汰理由）；被否的分层解读保留在层文件的「其他解读（被否）」里。半年后，这些是"为什么不选另一条路"的唯一答案。
+3. **树不删枝**：淘汰的推演节点保留（`status: dropped` + 淘汰理由 + 复活条件）；被否的分层解读保留在层文件的「其他解读（被否）」里。半年后，这些是"为什么不选另一条路"的唯一答案。
+4. **撤回走取代，不走改写**：用户反悔时，新建条目填 `supersedes:`，旧条目标 `superseded-by:`，内容保持原样；受波及的判据点标 `stale: true`，由全量重判结算。**偷偷改旧文档来实现反悔，等于篡改讨论史。**
 
 ## 7. state.json
 
@@ -224,10 +244,13 @@ node <skill>/scripts/gate.mjs --root design/<slug> --stage S5  # 用别的阶段
 | `tree.parents` 报错 | `from` / `parent` 指向了不存在的 ID，或写成了 `L-1`（必须三位：`L-001`） |
 | `stage.S1.layers` 报"未经用户确认" | 忘了 `confirmed: true` 与 `status: confirmed` 一起改 |
 | `stage.S1.layers` 报"缺少其他解读" | 只写了一种分法——分层也是解读，必须保留被否的那种 |
+| `stage.S1.layers` 报"缺少承接的信号" | 种子「判定对齐的信号」里有一条没被任何层认领，也没写进非目标 |
 | `stage.S3.apical` 报"关键名词在术语表里不存在" | 一句话里用了自造词，但没进术语表或还是 `[提案]` |
-| `stage.S3.apical` 报"这些层未被覆盖" | 每个 `L-` 层要么在「分层覆盖」里，要么在「非目标」里 |
+| `stage.S3.apical` 报"这些层未被承接" | 每个 `L-` 层要么在「承接了哪些层的什么」里，要么在「非目标」里 |
+| `stage.S4.extensions` 报"M- 缺少 服务" | 机制命题没说清它服务概念里的哪一句——它可能放错了位置，或者概念还没收好 |
+| `recheck.*` 报错 | 目标阶段是 S3/S5/S6/S7，但 `audit/recheck-<该阶段>.md` 缺失或漏了待盘点项：先全量重判再推进 |
 | `glossary.pending` 报错 | `[提案]` 术语超过 1 个：先和用户逐个确认或删掉 |
 | `stage.S5.final` 报"推演链断裂" | 「推演链」里的相邻两个节点，在文件里并不是父子关系 |
 | `rounds.sequence` 报错 | 轮次文件跳号（例如从 round-003 直接到 round-005） |
 | `! rounds.state-sync` 告警 | `state.round` 与轮次文件数不一致——机械记账，`apical_gate action=check` 会自动同步，不必手改，也不阻塞阶段 |
-| `stage.S7.selection` 报"推演来源" | 候选方案的 `推演来源` 不是保留状态的 `N-` 节点 |
+| `stage.S7.selection` 报"推演来源" | 候选方案的 `推演来源` 不是保留状态的 `N-` 或 `M-` |

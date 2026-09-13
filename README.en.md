@@ -2,22 +2,26 @@
 
 English | [中文](README.md)
 
-**A concept-deduction methodology for the phase before implementation.** Start from one possibly vague need (the *seed*), split it into layers (*roots*), derive node by node (*trunk*), converge on **exactly one core concept** (the *apical bud*) with its extensions (*limbs*) — and only then select the technology (*fruit*) from requirements, extensibility and application scenarios.
+**A concept-deduction methodology for the phase before implementation.** Start from one possibly vague need (the *seed*), split it into layers (*roots*), derive node by node (*trunk*), converge on **exactly one concept** (the *apical bud*), state what guarantees it as mechanism propositions plus extensions (*limbs*) — and only then select the technology (*fruit*) from locked criteria.
 
 ```
-seed ──► roots ──► trunk ──► apical bud ──► limbs ──► fruit
-need     layers     derivation   core concept   extensions   technology
+seed ──► roots ──► trunk ──► apical bud ──► limbs ──────► fruit
+need     layers     derivation  the concept   mechanisms    technology
+                                              + extensions
 ```
+
+**The character lives in the bud, the guarantees in the limbs.** The bud answers "what does this feel like" (explicable, generative, *not* falsifiable); the `M-` mechanism propositions answer "what guarantees it" (falsifiable, with counterexamples), and they are the constraints technology selection must obey — a criterion whose source is not an `M-` turns selection into an inventory of whatever happens to be installed.
 
 Research is **fertilizer**: it supplies premises and counterexamples, never conclusions. Questions are the **vitality**: the tree grows one node per round of Q&A. Everything is file-driven — a decision that was not written down was not made.
 
-It ships as a skill (`SKILL.md` + `references/` + `templates/` + `scripts/`), and as a DSH agent preset (`dsh-preset/`) that turns the method into machinery. Five claims that are unusual for a "thinking partner":
+It ships as a skill (`SKILL.md` + `references/` + `templates/` + `scripts/`), and as a DSH agent preset (`dsh-preset/`) that turns the method into machinery. Six claims that are unusual for a "thinking partner":
 
 1. **The conversation is the medium; files are the ledger.** Proposals, options and derivation chains are stated in chat — you never have to open a file to answer, and files record only what has already happened. A discussion degrades into "it writes, I read, I nitpick" exactly when this is violated (the DSH preset enforces it with a write guard).
 2. **Derivation, not brainstorming.** Every concept node records which parent it came from, and its ancestry must reach the seed. The gate rejects orphan nodes: an idea can be discussed, but it cannot impersonate a derivation.
 3. **Layering is itself an interpretation.** There is always more than one way to decompose a need; writing down only one silently replaces your need with my wording. So every layer keeps the competing reading it beat, and needs your confirmation.
-4. **One apical bud, and pruned branches stay.** Converging means choosing one core concept and recording the rivals it beat, with reasons. Six months from now that is the only answer to "why not the other path".
-5. **Terminology must not become a wall.** At most one new term per round, at most one awaiting your confirmation, and a term may not be defined using a term that is not yet defined above it. **You may rewrite any question or term** — I replace it everywhere and record the former name.
+4. **One bud, several mechanisms, and pruned branches stay.** The concept is unique; mechanism propositions may compete and may come back. A drop is a *conditional* judgment (reason + **revival condition**), and everything discarded is re-judged in full before the tree is allowed to converge (entering S3/S5/S6/S7) — the condition may have changed.
+5. **You run the experiments; I decide whether one is needed.** When a derivation depends on how some program actually behaves: read the source first (no file and line means you did not read it), and only then hand a real-machine test to you — with a hand-off document, **a prompt you can paste as-is**, and pass/fail criteria. Never ask for a reboot when reading the source would answer it.
+6. **Terminology must not become a wall.** At most one new term per round, at most one awaiting your confirmation, and a term may not be defined using a term that is not yet defined above it. **You may rewrite any question or term, and retract any decision without giving a reason** — the old entry is marked superseded, never deleted.
 
 ## Install
 

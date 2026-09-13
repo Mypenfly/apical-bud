@@ -59,6 +59,7 @@ const w = (rel, content) => {
   mkdirSync(dirname(path), { recursive: true })
   writeFileSync(path, content, 'utf8')
 }
+const del = (rel) => rmSync(join(root, rel), { force: true })
 const state = () => JSON.parse(readFileSync(join(root, 'state.json'), 'utf8'))
 const writeState = (value) => writeFileSync(join(root, 'state.json'), JSON.stringify(value, null, 2), 'utf8')
 
@@ -138,7 +139,7 @@ const fakeAgent = (parent = undefined) => {
 function writeSeed() {
   writeState({ schema: 1, topic: '演示：纸墨前端', slug: 'paper-ink', stage: 'S0', round: 0, gates: {}, verdict: { status: 'continue', at: null, note: '' } })
   w('seed/R-000-original.md', `---\nid: R-000\ntitle: 用户原话\nstatus: accepted\nstage: S0\nsources: []\nassumption: false\nupdated: 2026-01-01\n---\n\n> 我想要一个看着舒服的前端，别那么刺眼。\n`)
-  w('seed/real-need.md', `---\nkind: seed\nstatus: confirmed\nstatement: 让长时间读代码的人眼睛不累、注意力不被打断\nupdated: 2026-01-01\n---\n\n## 这句话是什么意思\n\n"不累"指视觉层的持续阅读负担，"不被打断"指注意力不被装饰性元素夺走。\n\n## 被否的表述\n\n- "做一个好看的界面" —— 为什么否：好看无法检验，且指向装饰而非负担。\n\n## 非目标\n\n- 不做主题市场 —— 理由：与"不被打断"无关。\n`)
+  w('seed/real-need.md', `---\nkind: seed\nstatus: confirmed\nstatement: 让长时间读代码的人眼睛不累、注意力不被打断\nupdated: 2026-01-01\n---\n\n## 这句话是什么意思\n\n"不累"指视觉层的持续阅读负担，"不被打断"指注意力不被装饰性元素夺走。\n\n## 被否的表述\n\n- "做一个好看的界面" —— 为什么否：好看无法检验，且指向装饰而非负担。\n\n## 非目标\n\n- 不做主题市场 —— 理由：与"不被打断"无关。\n\n## 判定对齐的信号\n\n- **成立**：连续读 30 分钟不酸 —— **不成立**：读十分钟就想调亮度\n- **成立**：页面上没有东西在动 —— **不成立**：用户说"老有东西闪"\n`)
 }
 
 /** Advance the recorded round so `rounds.sequence` stays satisfied. */
@@ -148,6 +149,15 @@ function round(k, stage) {
   value.round = k
   writeState(value)
 }
+
+/**
+ * One recheck record. Entering S3/S5/S6/S7 is gated on a full re-judgement of
+ * everything the tree has discarded, so the fixture writes one per boundary —
+ * with one section per discarded item.
+ */
+const recheck = (stage, ids) => `# 全量重判 · ${stage}\n\n`
+  + ids.map((id) => `## ${id} <被淘汰的东西>\n\n- 来源: ${id}\n- 当时的理由: 当时的推断（演示）\n- 现在的判断: 没变\n- 结论: 维持\n- 理由: 演示用例里条件没有变化\n`).join('\n')
+  + `\n## 本次重判的净结果\n\n- 维持 ${ids.length} 条 · 复活 0 条\n`
 
 async function main() {
   if (existsSync(sandbox)) rmSync(sandbox, { recursive: true, force: true })
@@ -226,8 +236,10 @@ async function main() {
   ok('S0 advance 成功', result.text.includes('S1'), result.text.split('\n')[0])
 
   w('glossary.md', `# 术语表\n\n- **纸墨感** [确认]：界面像纸与墨的关系，只有承载信息的墨色，没有装饰性的彩。\n`)
-  w('layers/L-001-visual.md', `---\nid: L-001\ntitle: 视觉层的"不累"\nparent: seed\nstatus: confirmed\nconfirmed: true\nupdated: 2026-01-02\n---\n\n## 层的内容\n\n什么视觉条件让连续阅读不产生疲劳。\n\n## 分解理由\n\n种子的判据"眼睛不累"必须靠视觉条件回答，无法由其他层代替。\n\n## 其他解读（被否）\n\n- 把"不累"理解为低对比度 —— 被否理由：对比不足在强光下更难读。\n\n## 判据\n\n- 连续阅读 30 分钟后无视觉疲劳自述。\n\n## 用户确认\n\n用户确认："就是别让我盯一会儿就酸。"\n`)
-  w('layers/L-002-attention.md', `---\nid: L-002\ntitle: 认知层的"不被打断"\nparent: seed\nstatus: confirmed\nconfirmed: true\nupdated: 2026-01-02\n---\n\n## 层的内容\n\n什么信息组织方式不让注意力被夺走。\n\n## 分解理由\n\n种子里的"注意力不被打断"只能由信息组织回答，与视觉层不重叠。\n\n## 其他解读（被否）\n\n- 把"不被打断"理解为减少功能 —— 被否理由：功能多少与注意力无关，是组织方式的问题。\n\n## 判据\n\n- 视线不被非承载信息的元素吸引。\n\n## 用户确认\n\n用户确认："对，别老有东西在我眼前动。"\n`)
+  w('layers/L-001-visual.md', `---\nid: L-001\ntitle: 视觉层的"不累"\nparent: seed\nstatus: confirmed\nconfirmed: true\nupdated: 2026-01-02\n---\n\n## 层的内容\n\n什么视觉条件让连续阅读不产生疲劳。\n\n## 分解理由\n\n种子的判据"眼睛不累"必须靠视觉条件回答，无法由其他层代替。\n\n## 其他解读（被否）\n\n- 把"不累"理解为低对比度 —— 被否理由：对比不足在强光下更难读。\n\n## 判据\n\n- 连续阅读 30 分钟后无视觉疲劳自述。\n\n## 承接的信号\n\n- 信号一「连续读 30 分钟不酸」 —— 检验：读完后自述不酸。\n\n## 用户确认\n\n用户确认："就是别让我盯一会儿就酸。"\n`)
+  // Kept as a constant so the "stale" case below can restore it verbatim.
+  const LAYER_ATTENTION = `---\nid: L-002\ntitle: 认知层的"不被打断"\nparent: seed\nstatus: confirmed\nconfirmed: true\nupdated: 2026-01-02\n---\n\n## 层的内容\n\n什么信息组织方式不让注意力被夺走。\n\n## 分解理由\n\n种子里的"注意力不被打断"只能由信息组织回答，与视觉层不重叠。\n\n## 其他解读（被否）\n\n- 把"不被打断"理解为减少功能 —— 被否理由：功能多少与注意力无关，是组织方式的问题。\n\n## 判据\n\n- 视线不被非承载信息的元素吸引。\n\n## 承接的信号\n\n- 信号二「页面上没有东西在动」 —— 检验：静态首屏无动效。\n\n## 用户确认\n\n用户确认："对，别老有东西在我眼前动。"\n`
+  w('layers/L-002-attention.md', LAYER_ATTENTION)
   round(2, 'S1')
   result = await call({ action: 'advance' })
   ok('S1 advance 成功', result.text.includes('S2'), result.text.split('\n')[0])
@@ -240,17 +252,88 @@ async function main() {
   result = await call({ action: 'advance' })
   ok('S2 advance 成功', result.text.includes('S3'), result.text.split('\n')[0])
 
-  const concept = (status, extra = '') => `---\nkind: apical\nstatus: ${status}\nstage: S3\nupdated: 2026-01-04\n---\n\n# 纸墨\n\n## 核心概念（一句话）\n\n界面只保留纸与墨的关系：墨色只承担信息，层级由字重与留白承担。\n\n## 关键名词\n\n- 纸墨感\n\n## 判据\n\n- 除承载信息的元素外不出现第二种色相。\n\n## 边界\n\n管到静态阅读界面为止；状态提示（错误、警告）是显式例外。\n\n## 非目标\n\n- 不做主题市场。\n\n## 反例与失败边界\n\n- 需要三态提示时只有墨色不够用 → 边界：允许一个语义色，且必须限定用途。\n\n## 分层覆盖\n\n| 层 | 如何被覆盖 |\n|---|---|\n| L-001 | 字面对比足、色相少 |\n| L-002 | 层级靠留白与字重 |\n\n## 淘汰的竞争节点\n\n| 节点 | 为什么它没有成为顶芽 |\n|---|---|\n| N-004 | 色相对比高，违反 N-001 |\n${extra}`
+  const concept = (status, extra = '') => `---
+kind: apical
+status: ${status}
+stage: S3
+updated: 2026-01-04
+---
+
+# 纸墨
+
+## 核心概念（一句话）
+
+纸墨：墨色只承担信息，层级由字重与留白承担。
+
+## 这意味着什么
+
+- 颜色不是装饰手段，而是信息手段。
+- 版面靠疏密说话，不靠框线与阴影。
+
+## 这不意味着什么
+
+- 不是"性冷淡风" —— 留白是层级工具，不是风格标签。
+- 不是拒绝一切动效 —— 动效若要出现，必须承载状态变化。
+
+## 它生成的主张
+
+1. 除承载信息的元素外不出现第二种色相。
+2. 层级由字重与间距表达，不用色块。
+3. 状态提示是显式例外，且必须限定用途。
+
+## 关键名词
+
+- 纸墨感
+
+## 边界
+
+管到静态阅读界面为止；状态提示（错误、警告）是显式例外。
+
+## 非目标
+
+- 不做主题市场。
+
+## 反例与失败边界
+
+- 需要三态提示时只有墨色不够用 → 边界：允许一个语义色，且必须限定用途。
+
+## 承接了哪些层的什么
+
+| 层 | 由本概念的哪一句承接 |
+|---|---|
+| L-001 | "墨色只承担信息"，字面对比足、色相少 |
+| L-002 | "层级由字重与留白承担"，装饰不参与表达 |
+
+## 淘汰的竞争概念
+
+| 概念 | 为什么它没有成为顶芽 | 复活条件 |
+|---|---|---|
+| 霓虹暗色 | 色相对比高，与 L-001 的判据冲突 | 若"不被打断"被重判为次要，它可重新竞争 |
+${extra}`
   w('concept/concept.md', concept('draft'))
   round(4, 'S3')
+  result = await call({ action: 'check' })
+  ok('缺全量重判时拒绝进入 S3', !result.text.includes('PASS') && result.text.includes('recheck.exists'), result.text.split('\n').filter((line) => line.includes('recheck')).join(' '))
+  w('audit/recheck-S3.md', recheck('S3', ['N-004']))
   result = await call({ action: 'advance' })
-  ok('S3 advance 成功', result.text.includes('S4'), result.text.split('\n')[0])
+  ok('补上重判后 S3 advance 成功', result.text.includes('已推进') && result.text.includes('S2 → S3'), result.text.split('\n')[0])
 
   w('glossary.md', `# 术语表\n\n- **承载信息** [确认]：直接表达内容或层级的元素，不含装饰。\n- **纸墨感** [确认]：界面像纸与墨的关系，只有承载信息的墨色，没有装饰性的彩。\n- **可回退** [确认]：任何自动动作都能在撤销窗口内恢复。\n`)
-  w('concept/extensions.md', `# 侧枝（延伸）\n\n## E-001 印刷排印规则\n\n- 档位: 必然\n- 内容: 字号阶梯与行距遵循排印惯例。\n\n## E-002 阅读时长自适应\n\n- 档位: 需求\n- 来源: L-001\n- 内容: 长阅读场景自动加大行距。\n\n## E-003 纸纹理\n\n- 档位: 猜测\n- 内容: 极淡的纸纹理可能降低屏感。\n- 何时验证: 用户反馈"太像屏幕"时再试。\n`)
+  w('concept/extensions.md', `# 侧枝\n\n## M-001 只有一条色相通道\n\n- 类型: 机制命题\n- 服务: 第 1 条 ← N-001\n- 档位: 必然\n- status: kept\n\n### 机制\n\n界面只通过墨色与字重表达信息与层级：除承载信息的元素外不出现第二种色相。\n可证伪：出现第二种色相即不成立。\n\n### 反例\n\n状态提示（错误、警告）需要语义色；此时必须限定用途。\n\n### 边界\n\n只管静态阅读界面；不要求候选具备主题系统。\n\n## M-002 暗色霓虹\n\n- 类型: 机制命题\n- 服务: 第 1 条 ← N-001\n- 档位: 需求\n- 来源: L-002\n- status: dropped\n- 复活条件: 若"不被打断"被重判为次要判据，它可重新竞争\n\n### 机制\n\n用高色相对比在暗背景上突出层级。\n\n### 反例\n\n白天环境下可读性下降。\n\n### 淘汰理由\n\n与 M-001 的"只有一条色相通道"直接冲突；当时的推断见 N-004。\n\n## E-001 印刷排印规则\n\n- 档位: 必然\n- 内容: 字号阶梯与行距遵循排印惯例。\n\n## E-002 阅读时长自适应\n\n- 档位: 需求\n- 来源: L-001\n- 内容: 长阅读场景自动加大行距。\n\n## E-003 纸纹理\n\n- 档位: 猜测\n- 内容: 极淡的纸纹理可能降低屏感。\n- 何时验证: 用户反馈"太像屏幕"时再试。\n`)
   round(5, 'S4')
+  result = await call({ action: 'check' })
+  ok('S4 出口条件（含 M- 机制命题）通过', result.text.includes('PASS'), result.text.split('\n').filter((line) => line.includes('✗')).join(' '))
   result = await call({ action: 'advance' })
-  ok('S4 advance 成功', result.text.includes('S5'), result.text.split('\n')[0])
+  ok('S4 advance 成功', result.text.includes('已推进') && result.text.includes('S3 → S4'), result.text.split('\n')[0])
+  result = await call({ action: 'advance' })
+  ok(
+    '淘汰的机制命题也进 S5 的重判清单',
+    result.text.includes('拒绝推进') && result.text.includes('M-002'),
+    result.text.split('\n').filter((line) => line.includes('M-002')).join(' '),
+  )
+  w('audit/recheck-S5.md', recheck('S5', ['N-004', 'M-002']))
+  result = await call({ action: 'check' })
+  ok('补上 S5 重判后 S4 通过', result.text.includes('PASS'), result.text.split('\n').filter((line) => line.includes('✗')).join(' '))
 
   w('decisions/D-001-paper-ink.md', `---\nid: D-001\ntitle: 采用纸墨作为核心理念\nstatus: accepted\nstage: S3\nsources: [L-001, N-003]\nassumption: false\ndissent: false\nupdated: 2026-01-04\n---\n\n## 决定\n\n以 N-003 为顶芽。\n`)
   w('audit/challenges.md', `# 异议与反对记录\n\n## X-001 三态提示会被牺牲\n\n- 主张: 只有墨色时错误状态无法表达\n- 证据: L-002 的判据\n- 代价: 错误提示不可见\n- 替代方案: 允许一个语义色\n- 可证伪判据: 实际界面里出现第三种颜色的频率\n- 结论: 采纳（已在边界里加入显式例外）\n`)
@@ -258,26 +341,88 @@ async function main() {
 ## 推演链
 
 seed → L-001 → N-001 → N-003
+seed → L-002 → N-002 → N-003
+seed → L-001 → N-001 → M-001
 
 ## 已知反对与回应
 
 - X-001 三态提示会被牺牲 → 采纳：边界里允许一个语义色，但限定用途。
 `))
+  process.stdout.write('\n[8.5] 理念概念与机制命题的分工\n')
+  // S4 is the stage that owes a recheck before S5, and it runs before
+  // `tech/options.md` exists — which is exactly the window these cases need.
+  const stage3 = state()
+  stage3.stage = 'S3'
+  writeState(stage3)
+  const conceptFinal = readFileSync(join(root, 'concept', 'concept.md'), 'utf8')
+  w('concept/concept.md', conceptFinal.replace('## 它生成的主张', '## 生成的东西'))
+  result = await call({ action: 'check' })
+  ok(
+    '概念缺“它生成的主张”时不许进 S5',
+    result.text.includes('stage.S3.apical') && result.text.includes('它生成的主张'),
+    result.text.split('\n').filter((line) => line.includes('它生成的主张')).join(' '),
+  )
+  w('concept/concept.md', conceptFinal)
+  const stage4 = state()
+  stage4.stage = 'S4'
+  writeState(stage4)
+
+  const extensionsFinal = readFileSync(join(root, 'concept', 'extensions.md'), 'utf8')
+  w('concept/extensions.md', extensionsFinal.replace('- 服务: 第 1 条 ← N-001\n', ''))
+  result = await call({ action: 'check' })
+  ok(
+    '机制命题缺 服务: 时被拦下',
+    result.text.includes('stage.S4.mechanisms') && result.text.includes('缺少 服务'),
+    result.text.split('\n').filter((line) => line.includes('✗')).join(' '),
+  )
+  w('concept/extensions.md', extensionsFinal)
+
+  w('layers/L-002-attention.md', readFileSync(join(root, 'layers', 'L-002-attention.md'), 'utf8').replace('confirmed: true', 'confirmed: true\nstale: true'))
+  result = await call({ action: 'check' })
+  ok(
+    '上游被撤回波及（stale: true）时不许推进',
+    result.text.includes('tree.stale') && result.text.includes('L-002'),
+    result.text.split('\n').filter((line) => line.includes('stale')).join(' '),
+  )
+  w('layers/L-002-attention.md', LAYER_ATTENTION)
+
+  process.stdout.write('\n[8.6] 重判不是盖章：维持也要写理由\n')
+  w('audit/recheck-S5.md', recheck('S5', ['N-004', 'M-002']).replace('- 理由: 演示用例里条件没有变化\n', ''))
+  result = await call({ action: 'check' })
+  ok(
+    '重判条目缺理由时不许推进',
+    result.text.includes('recheck.S5') && result.text.includes('理由'),
+    result.text.split('\n').filter((line) => line.includes('recheck')).join(' '),
+  )
+  w('audit/recheck-S5.md', recheck('S5', ['N-004', 'M-002']))
+
   round(6, 'S5')
   result = await call({ action: 'advance' })
-  ok('S5 advance 成功', result.text.includes('S6'), result.text.split('\n')[0])
+  ok('S5 advance 成功', result.text.includes('已推进') && result.text.includes('S4 → S5'), result.text.split('\n')[0])
 
-  w('tech/criteria.md', `---\nkind: criteria\nstatus: locked\nstage: S6\nlocked_at: "2026-01-05 09:00"\nupdated: 2026-01-05\n---\n\n# 判据\n\n## K-001 色相数量可控\n\n- 权重: 高\n- 硬约束: 是\n- 判据内容: 默认界面不需要第二种色相即可表达层级\n- 来源: N-003\n\n## K-002 字重与留白可控\n\n- 权重: 高\n- 硬约束: 否\n- 判据内容: 层级可由字重与间距表达\n- 来源: L-002\n\n## K-003 静态渲染\n\n- 权重: 中\n- 硬约束: 是\n- 判据内容: 首屏不依赖客户端脚本即可阅读\n- 来源: L-001\n\n## K-004 团队上手成本\n\n- 权重: 中\n- 硬约束: 否\n- 判据内容: 一周内可维护\n- 来源: R-000\n\n## K-005 生态寿命\n\n- 权重: 低\n- 硬约束: 否\n- 判据内容: 依赖仍在维护\n- 来源: N-001\n`)
-  round(7, 'S6')
-  result = await call({ action: 'advance' })
-  ok('S6 advance 成功', result.text.includes('S7'), result.text.split('\n')[0])
-
-  w('tech/options.md', `---\nkind: options\nstatus: draft\nstage: S6\ncreated: "2026-01-05 10:00"\nupdated: 2026-01-05\n---\n\n# 候选\n\n## O-001 语义化 HTML + 单色 CSS 变量\n\n- 判定: 采纳\n- 推演来源: N-003\n- 证据: E2\n- 证据来源: 30 行原型跑通两种字重层级\n- 满足判据: K-001 满足、K-002 满足\n\n## O-002 组件库主题 + 暗色模式\n\n- 判定: 淘汰\n- 推演来源: N-004\n- 证据: E1\n- 证据来源: 官方文档\n- 拒绝理由: K-001 硬约束要求默认界面不引入第二种色相，组件库默认主题自带强调色。\n`)
+  w('tech/criteria.md', `---\nkind: criteria\nstatus: locked\nstage: S6\nlocked_at: "2026-01-05 09:00"\nupdated: 2026-01-05\n---\n\n# 判据\n\n## K-001 色相数量可控\n\n- 权重: 高\n- 硬约束: 是\n- 判据内容: 默认界面不需要第二种色相即可表达层级\n- 来源: M-001\n\n## K-002 字重与留白可控\n\n- 权重: 高\n- 硬约束: 否\n- 判据内容: 层级可由字重与间距表达\n- 来源: L-002\n\n## K-003 静态渲染\n\n- 权重: 中\n- 硬约束: 是\n- 判据内容: 首屏不依赖客户端脚本即可阅读\n- 来源: L-001\n\n## K-004 团队上手成本\n\n- 权重: 中\n- 硬约束: 否\n- 判据内容: 一周内可维护\n- 来源: R-000\n\n## K-005 生态寿命\n\n- 权重: 低\n- 硬约束: 否\n- 判据内容: 依赖仍在维护\n- 来源: N-001\n`)
+  w('tech/options.md', `---\nkind: options\nstatus: draft\nstage: S6\ncreated: "2026-01-05 10:00"\nupdated: 2026-01-05\n---\n\n# 候选\n\n## 清单来源\n\n本机已有的框架与手写 CSS 两条路；没查：其他渲染目标的可行性。\n\n## O-001 语义化 HTML + 单色 CSS 变量\n\n- 判定: 采纳\n- 推演来源: N-003\n- 证据: E2\n- 证据来源: 30 行原型跑通两种字重层级\n- 满足判据: K-001 满足、K-002 满足\n\n## O-002 组件库主题 + 暗色模式\n\n- 判定: 淘汰\n- 推演来源: N-004\n- 证据: E1\n- 证据来源: 官方文档\n- 拒绝理由: K-001 硬约束要求默认界面不引入第二种色相，组件库默认主题自带强调色。\n- 复活条件: 若状态提示的语义色被提升为必需，它自带强调色反而成为优点。\n`)
   w('tech/selection.md', `---\nkind: selection\nstatus: final\nstage: S7\nupdated: 2026-01-06\n---\n\n# 选型定稿\n\n## 选定方案\n\n语义化 HTML + 单色 CSS 变量体系。\n\n## 判据对照\n\n| 判据 | 权重 | 结论 | 依据 |\n|---|---|---|---|\n| K-001 | 高 | 满足 | E2 原型 |\n\n## 拒绝理由汇总\n\n| 方案 | 失败判据 |\n|---|---|\n| O-002 | K-001 |\n\n## 退出成本与迁移\n\n换主题体系只需替换变量表，无需重写结构。\n\n## 未验证假设\n\n无\n`)
+  w('audit/recheck-S7.md', recheck('S7', ['N-004', 'M-002', 'O-002']))
+  round(7, 'S6')
+  w('audit/recheck-S6.md', recheck('S6', ['N-004', 'M-002', 'O-002']))
+  result = await call({ action: 'check' })
+  ok('S6 出口条件通过', result.text.includes('PASS'), result.text.split('\n').filter((line) => line.includes('✗')).join(' '))
+  result = await call({ action: 'advance' })
+  ok('S6 advance 成功', result.text.includes('已推进') && result.text.includes('S5 → S6'), result.text.split('\n')[0])
+
   round(8, 'S7')
   result = await call({ action: 'check' })
   ok('S7 check 通过', result.text.includes('PASS'), result.text.split('\n').slice(0, 4).join(' / '))
   result = await call({ action: 'advance' })
+  ok('S7 advance 成功', result.text.includes('已推进') && result.text.includes('S6 → S7'), result.text.split('\n')[0])
+  result = await call({ action: 'advance' })
+  ok('S7 是终态，拒绝推进', result.text.includes('终态'), result.text.split('\n')[0])
+  w('audit/recheck-S7.md', recheck('S7', ['N-004', 'M-002', 'O-002']))
+  result = await call({ action: 'check' })
+  ok('S7 check 通过', result.text.includes('PASS'), result.text.split('\n').slice(0, 4).join(' / '))
+  result = await call({ action: 'advance' })
+  process.stdout.write('DEBUG-S7:\n' + result.text + '\n')
   ok('S7 是终态，拒绝推进', result.text.includes('终态'), result.text.split('\n')[0])
 
   process.stdout.write('\n[6] 门禁：孤儿节点与断链\n')
