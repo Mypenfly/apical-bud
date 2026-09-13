@@ -35,6 +35,8 @@ git clone git@github.com:Mypenfly/apical-bud.git ~/.dsh/skills/apical-bud
 
 `dsh-preset/` 里的预设会把三条承重规则变成机制：`write`/`edit` 只能写讨论根、用户原话与既有轮次纪要只追加、`state.json.stage` 只能由 `apical_gate` 在出口条件通过后推进。只装 skill 也能用：模型会在需要时加载它，或你用 `/apical-bud` 手动调用。细节见 [`dsh-preset/README.md`](dsh-preset/README.md)。
 
+改完 skill 或 preset 之后记得跑一次 `install.sh`，并**新开一个会话**：persona 与 SKILL.md 在会话开始时就注入了，已经在跑的会话不会中途换规矩。
+
 **Claude Code / 其他兼容 SKILL.md 的宿主**：
 
 ```bash
@@ -83,19 +85,19 @@ node scripts/gate.mjs --root design/<slug> --stage S5  # 用别的阶段视角�
 
 退出码 0 = 通过，1 = 有缺失项。它同时是模块，宿主插件可以 `import { validate } from './scripts/gate.mjs'` 直接调用。
 
-它检查的是**结构与可追溯性**：无孤儿节点、每层有确认与判据、顶芽一句话 ≤100 字、关键名词都是已确认术语、推演链逐跳不断、判据先于方案锁定、候选方案挂在保留节点上。它**保证不了理念好不好**——那是红队复核和你自己的判断。
+它检查的是**结构与可追溯性**：无孤儿节点、每层有确认与判据、顶芽一句话 ≤60 字、关键名词都是已确认术语、推演链逐跳不断且覆盖每一个保留节点、机制命题带 `服务:` 与反例、判据先于方案锁定且至少一条来源指向 `M-`、候选方案挂在保留的节点或机制上、进 S3/S5/S6/S7 之前有全量重判记录。它**保证不了理念好不好**——那是红队复核和你自己的判断。
 
 ## 目录结构
 
 ```
 SKILL.md                       方法论主干（常驻）
-references/protocol.md         每轮循环、提问纪律、用户改写、反模式
-references/seed-and-layering.md S0–S1 种子对齐与需求分层
-references/derivation.md       S2 推演规则、调研的用法、回退时机
-references/apical.md           S3–S5 收敛、侧枝、定稿与红队复核
-references/tech-selection.md   S6–S7 判据、证据分级、退出成本
+references/protocol.md         每轮循环、提问与选项纪律、反悔、全量重判、反模式
+references/seed-and-layering.md S0–S1 种子对齐、信号追踪与需求分层
+references/derivation.md       S2 推演规则、实验三选一、清单来源、回退时机
+references/apical.md           S3–S5 理念概念、机制命题与延伸、定稿与红队复核
+references/tech-selection.md   S6–S7 判据（来源含 M-）、证据分级、退出成本
 references/doc-conventions.md  文档规范（门禁契约）
-templates/                     17 份文档模板
+templates/                     19 份文档模板（含 handoff / recheck）
 scripts/gate.mjs               零依赖门禁校验器（模块 + CLI）
 dsh-preset/                    DSH 会话装配层：persona、写守卫、apical_gate 工具、状态横幅、install.sh、自检
 README.md / README.en.md       中文 / English
@@ -105,4 +107,4 @@ README.md / README.en.md       中文 / English
 
 提问纪律（一次一问、给具体选项、能从文件查到的不问人）改编自 [grill-me](https://github.com/RobMitt/grill-me-skill) 的思路；在其上补了四件它没有的东西：**推演树的可追溯性、分层确认、阶段门禁、以及质疑/否决权**。
 
-**许可：保留所有权利（All rights reserved）。** 本仓库未附开源许可证，GitHub 会显示 `No license`：可以阅读，但没有授予使用、复制、修改或再发布的许可。若希望他人能直接使用与再发布，需要另附一份许可证（MIT、Apache-2.0 等）。
+**许可：[MIT](LICENSE)。** 随便用、改、再发布，保留版权声明即可。方法论的价值在于被用起来——想要更严的专利与署名条款，可以换成 Apache-2.0；本仓库选了摩擦最小的那个。
