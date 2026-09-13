@@ -214,8 +214,11 @@ export function openQuestions(root, stage) {
 
 /**
  * A compact picture of the tree for the banner: how many layers, how many
- * derivation nodes are kept versus dropped, how many layers still await the
- * user's confirmation, and how many terms await it too.
+ * derivation nodes are kept versus thrown away, how many mechanism propositions
+ * the crown carries, and what still awaits the user's confirmation.
+ *
+ * `dropped` matters because a drop is a conditional judgment: the banner shows
+ * it every turn so the count is hard to forget when a recheck comes due.
  */
 export function treeCounts(root) {
   const layers = mdFiles(root, 'layers')
@@ -236,6 +239,11 @@ export function treeCounts(root) {
     if (status === 'kept') kept += 1
     else if (status === 'dropped') dropped += 1
   }
+  // Mechanism propositions live as `## M-00N` items inside the extensions file.
+  let mechanisms = 0
+  for (const line of read(join(root, 'concept/extensions.md')).split('\n')) {
+    if (/^##\s+M-\d{3}/.test(line)) mechanisms += 1
+  }
   let terms = 0
   let pending = 0
   try {
@@ -248,5 +256,5 @@ export function treeCounts(root) {
   } catch {
     // No glossary yet.
   }
-  return { layers: layers.length, layersConfirmed, nodes: nodes.length, kept, dropped, terms, pending }
+  return { layers: layers.length, layersConfirmed, nodes: nodes.length, kept, dropped, mechanisms, terms, pending }
 }

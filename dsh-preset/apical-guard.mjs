@@ -395,7 +395,8 @@ function bannerText(cwd, base, active, stateRead) {
       ? '门禁: 上次 check PASS（有改动需重跑）'
       : `门禁: 上次 check FAIL（缺 ${Array.isArray(gate.missing) ? gate.missing.length : 0} 项）`
   const questionText = questions.blocking === 0 ? '阻塞本阶段问题 0' : `阻塞本阶段问题 ${questions.blocking}（${questions.ids.join(', ')}）`
-  const tree = `层 ${counts.layers}(确认 ${counts.layersConfirmed}) · 节点 ${counts.nodes}(留 ${counts.kept}/汰 ${counts.dropped}) · 术语 ${counts.terms}(待确认 ${counts.pending})`
+  const mechanisms = counts.mechanisms > 0 ? ` · 机制 ${counts.mechanisms}` : ''
+  const tree = `层 ${counts.layers}(确认 ${counts.layersConfirmed}) · 节点 ${counts.nodes}(留 ${counts.kept}/汰 ${counts.dropped})${mechanisms} · 术语 ${counts.terms}(待确认 ${counts.pending})`
   const siblings = listRoots(cwd, base)
   const bound = active.kind === 'bound' ? '' : '（按唯一树推断，未显式绑定）'
   const stale = active.missingBinding === undefined ? '' : ` · 原绑定 ${active.missingBinding} 已不存在`
