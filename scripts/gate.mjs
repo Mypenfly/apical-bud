@@ -42,9 +42,9 @@ export const STAGES = ['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7']
 /** Human titles for every message the model and the user see. */
 export const STAGE_TITLES = {
   S0: '种子 · 需求对齐',
-  S1: '根系 · 需求分层',
-  S2: '推演 · 逐层生长',
-  S3: '顶芽 · 理念概念',
+  S1: '根系 · 拆词与认领',
+  S2: '推演 · 第一跳（把需求说定）',
+  S3: '顶芽 · 第二跳（定理念）',
   S4: '侧枝 · 机制与延伸',
   S5: '定型 · 理念定稿',
   S6: '果实 · 选型判据',
@@ -54,9 +54,9 @@ export const STAGE_TITLES = {
 /** What each stage must leave on disk before it may be left. */
 export const STAGE_ARTIFACTS = {
   S0: ['seed/R-000-original.md（用户原话）', 'seed/real-need.md：一句话真实需求（status: confirmed）+ 被否的表述 ≥1 + 非目标 ≥1 + 判定对齐的信号 ≥1'],
-  S1: ['layers/L-00N-*.md ≥2：parent、分解理由、其他解读（被否）≥1、判据 ≥1、承接的信号 ≥1、confirmed: true', '种子的每条「判定对齐的信号」都被某层认领或列入非目标'],
-  S2: ['derivation/N-00N-*.md：每个层至少 1 个节点；kept 节点有 from 与反例；dropped 节点有淘汰理由；所有 kept 节点的祖先链通到种子'],
-  S3: ['concept/concept.md：核心理念概念（一句话 ≤60 字）、这意味着什么/这不意味着什么（各 ≥2）、它生成的主张 ≥3、关键名词 ≤3（均为已确认术语）、边界、非目标、反例与失败边界、承接了哪些层的什么、淘汰的竞争概念'],
+  S1: ['seed/real-need.md 的「## 拆词与认领」≥1 条（拆开—认领真的发生过）', 'layers/L-00N-*.md ≥2：parent、用户认领、分解理由、其他解读（被否）≥1、判据 ≥1、承接的信号 ≥1、confirmed: true', '种子的每条「判定对齐的信号」都被某层认领或列入非目标'],
+  S2: ['第一跳（stage: S2）：kind: 候选 各带「## 对立面」与「## 放弃了什么」且互指；kind: 定论 带「## 推演」与「## 反例」', 'concept/need.md：status: settled、「## 定稿」≤120 字、「## 每一项来自哪一条」覆盖全部 kept 的第一跳定论节点', '所有 kept 的定论节点祖先链通到种子（候选不查这条）'],
+  S3: ['第二跳（stage: S3）：至少一次摊开候选，各带「## 对立面」', 'concept/concept.md：核心理念概念（一句话 ≤60 字）、这意味着什么/这不意味着什么（各 ≥2）、它生成的主张 ≥3、关键名词 ≤3（均为已确认术语）、边界、非目标、反例与失败边界、从需求定稿来的哪一句、承接了哪些层的什么、淘汰的竞争概念'],
   S4: ['concept/extensions.md：≥3 条 E-（档位 必然|需求|猜测，需求档带来源）；M- 机制命题带 服务:/## 机制/## 反例', 'glossary.md ≥3 个术语'],
   S5: ['concept.md status: final', '## 推演链：从种子到顶芽无断链（允许多条分支）', 'audit/recheck-S5.md 覆盖全部待盘点项', '已知反对与回应 非空', 'audit/challenges.md 每条异议有结论', '无 proposed 决策'],
   S6: ['tech/criteria.md status: locked：≥5 条判据，各带权重、硬约束、来源（可为 M-00N）', 'options.md 不得早于判据锁定', 'audit/recheck-S6.md 覆盖全部待盘点项'],
@@ -71,9 +71,16 @@ const Q_ID = /^Q-\d{3}$/
 const D_ID = /^D-\d{3}$/
 const LAYER_STATUS = new Set(['draft', 'confirmed'])
 const NODE_STATUS = new Set(['kept', 'dropped'])
+// A node is either a *candidate* (one possible reading of one item, with nothing
+// proved yet) or a *conclusion* (the one that survived, with a derivation chain).
+// Candidates are what makes "several readings, then one" real instead of a single
+// answer dressed up as a derivation.
+const NODE_KIND = new Set(['候选', '定论'])
+const NODE_STAGE = new Set(['S2', 'S3'])
 const QUESTION_STATUS = new Set(['open', 'closed'])
 const DECISION_STATUS = new Set(['proposed', 'accepted', 'rejected', 'superseded'])
 const SEED_STATUS = new Set(['draft', 'confirmed'])
+const NEED_STATUS = new Set(['draft', 'settled'])
 const TIERS = ['必然', '需求', '猜测']
 const EVIDENCE = /E[123]/
 
@@ -220,6 +227,21 @@ function bullets(text) {
     .filter((line) => line.length > 0)
 }
 
+/**
+ * The entries of a list section, written either as bullets or as the data rows of
+ * a markdown table. Both are legitimate ways to lay out the same list, so a check
+ * that accepted only one of them would be enforcing formatting, not content.
+ */
+function listEntries(text) {
+  const rows = (text ?? '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith('|'))
+    .filter((line) => !/^\|[\s:|-]*\|$/.test(line))
+  const data = rows.length > 1 ? rows.slice(1) : []
+  return [...bullets(text), ...data]
+}
+
 /** Every file below a directory (recursive, real files only). */
 function filesUnder(dir) {
   const out = []
@@ -338,10 +360,19 @@ export function validate(root, options = {}) {
   // ── the tree: layers, nodes, questions, decisions ────────────────────────
   const original = readDoc(join(rootDir, 'seed/R-000-original.md'))
   const seed = readDoc(join(rootDir, 'seed/real-need.md'))
+  // The settled need: the landing point of the first hop. Like `seed` it carries
+  // no number of its own — it is referenced by the literal token `need`.
+  const need = readDoc(join(rootDir, 'concept/need.md'))
   const layers = docsIn(join(rootDir, 'layers'))
   const nodes = docsIn(join(rootDir, 'derivation'))
   const questions = docsIn(join(rootDir, 'questions'))
   const decisions = docsIn(join(rootDir, 'decisions'))
+
+  // `kind` decides which sections a node owes. A node with no `kind` at all is an
+  // old tree grown before candidates existed; it is treated as a conclusion, so it
+  // keeps being checked by exactly the rules it was written against.
+  const isCandidate = (doc) => doc.data.kind === '候选'
+  const isConclusion = (doc) => doc.data.kind !== '候选'
   // The two branches of the crown live in one file: `M-` mechanism propositions
   // (how the concept is guaranteed — what technology selection must obey) and
   // `E-` extensions (what the concept entails).
@@ -373,6 +404,10 @@ export function validate(root, options = {}) {
   const badStatus = []
   for (const doc of layers) if (!LAYER_STATUS.has(doc.data.status)) badStatus.push(`layers/${doc.rel}: status=${String(doc.data.status)}`)
   for (const doc of nodes) if (!NODE_STATUS.has(doc.data.status)) badStatus.push(`derivation/${doc.rel}: status=${String(doc.data.status)}`)
+  for (const doc of nodes) {
+    if (doc.data.kind !== undefined && !NODE_KIND.has(doc.data.kind)) badStatus.push(`derivation/${doc.rel}: kind=${String(doc.data.kind)}（候选|定论）`)
+    if (doc.data.kind !== undefined && !NODE_STAGE.has(doc.data.stage)) badStatus.push(`derivation/${doc.rel}: stage=${String(doc.data.stage)}（S2|S3）`)
+  }
   for (const doc of questions) if (!QUESTION_STATUS.has(doc.data.status)) badStatus.push(`questions/${doc.rel}: status=${String(doc.data.status)}`)
   for (const doc of decisions) if (!DECISION_STATUS.has(doc.data.status)) badStatus.push(`decisions/${doc.rel}: status=${String(doc.data.status)}`)
   add('docs.status', badStatus.length === 0, `状态词表外或缺失：${badStatus.join('；')}`)
@@ -394,7 +429,7 @@ export function validate(root, options = {}) {
     const from = [...served.matchAll(/(?:N|L)-\d{3}/g)].map((match) => match[0])
     parents.set(item.id, from.length > 0 ? from : ['seed'])
   }
-  const knownIds = new Set(['seed', 'R-000', ...parents.keys()])
+  const knownIds = new Set(['seed', 'R-000', 'need', ...parents.keys()])
   const danglingParents = []
   for (const [id, list] of parents) {
     if (list.length === 0) danglingParents.push(`${id} 没有任何父节点`)
@@ -402,19 +437,27 @@ export function validate(root, options = {}) {
   }
   add('tree.parents', danglingParents.length === 0, `父节点缺失或指向不存在的节点：${danglingParents.join('；')}`)
 
-  /** Whether a node's ancestry reaches the seed (any one path is enough). */
+  /**
+   * Whether a node's ancestry reaches the seed (any one path is enough).
+   * `need` counts as a root: it is the landing point of the first hop, and its own
+   * traceability back to the seed is checked separately (every kept first-hop
+   * conclusion must be listed in its `## 每一项来自哪一条`).
+   */
   const reachesSeed = (id, seenSet = new Set()) => {
-    if (id === 'seed' || id === 'R-000') return true
+    if (id === 'seed' || id === 'R-000' || id === 'need') return true
     if (seenSet.has(id)) return false
     seenSet.add(id)
     const list = parents.get(id)
     if (list === undefined) return false
     return list.some((parent) => reachesSeed(parent, new Set(seenSet)))
   }
+  // Only conclusions are held to the ancestry rule. A candidate has a `from` but
+  // no argument yet — that is exactly what makes it a candidate, and the whole
+  // point of laying several out before picking one.
   const orphans = [...nodes]
-    .filter((doc) => doc.data.status === 'kept' && !reachesSeed(String(doc.data.id)))
+    .filter((doc) => doc.data.status === 'kept' && isConclusion(doc) && !reachesSeed(String(doc.data.id)))
     .map((doc) => String(doc.data.id))
-  add('tree.connected', orphans.length === 0, `这些保留节点的祖先链没有通到种子（等于凭空的灵感，不是推演）：${orphans.join(', ')}`)
+  add('tree.connected', orphans.length === 0, `这些保留的定论节点祖先链没有通到种子（等于凭空的灵感，不是推演）：${orphans.join(', ')}`)
 
   // ── relations to other trees in the same project ─────────────────────────
   // A project legitimately holds several trees (one per need or phase) and they
@@ -608,12 +651,22 @@ export function validate(root, options = {}) {
         const sections = sectionsOf(doc.body)
         if (typeof doc.data.parent !== 'string' || doc.data.parent === '') problems.push(`${id} 缺少 parent`)
         if (doc.data.confirmed !== true || doc.data.status !== 'confirmed') problems.push(`${id} 未经用户确认（confirmed: true + status: confirmed）`)
+        if (!hasContent(sections.get('用户认领'))) problems.push(`${id} 缺少“## 用户认领”（这一层来自哪个词的哪一项、用户怎么认领的）`)
         if (!hasContent(sections.get('分解理由'))) problems.push(`${id} 缺少“## 分解理由”`)
         if (bullets(sections.get('其他解读（被否）')).length < 1) problems.push(`${id} 缺少“## 其他解读（被否）”条目（分层也是一种解读，必须保留被否的那种）`)
         if (bullets(sections.get('判据')).length < 1) problems.push(`${id} 缺少“## 判据”条目`)
         if (!reachesSeed(id)) problems.push(`${id} 的祖先链没有通到种子`)
       }
       add('stage.S1.layers', problems.length === 0, problems.join('；'))
+
+      // The words were taken apart and the user claimed each piece. Without this,
+      // the layers are angles I chose — my reading of the need, not his.
+      add(
+        'stage.S1.words',
+        listEntries(sectionsOf(seed.body).get('拆词与认领')).length >= 1,
+        '种子缺少“## 拆词与认领”条目：种子里的词没有拆开、也没有让用户逐项认领。'
+        + '缺了这一步，下面的层就是我自己切的角度，不是他认下来的需求',
+      )
 
       // Every signal the seed says would show alignment must be owned by a layer
       // or explicitly written off. Without this, a converged sentence quietly
@@ -631,25 +684,93 @@ export function validate(root, options = {}) {
       }
     },
     S2: () => {
-      const problems = []
+      // A tree grown before candidates existed has no `kind` on any node and no
+      // settled-need document. It is told what the current shape is and may
+      // migrate when it next moves; it is never retro-broken.
+      const legacyTree = !need.ok && nodes.length > 0 && nodes.every((doc) => doc.data.kind === undefined)
+      if (legacyTree) {
+        const problems = []
+        for (const doc of nodes) {
+          const sections = sectionsOf(doc.body)
+          if (!hasContent(sections.get('推演'))) problems.push(`${doc.data.id} 缺少“## 推演”`)
+          if (doc.data.status === 'kept' && !hasContent(sections.get('反例'))) problems.push(`${doc.data.id} 是保留节点但缺少“## 反例”`)
+        }
+        add('stage.S2.nodes', problems.length === 0, problems.join('；'))
+        add(
+          'stage.S2.legacy',
+          true,
+          '本树的节点还是旧形状（只有推演节点，没有 kind: 候选 | 定论，也没有 concept/need.md）。'
+          + '新形状要求先摊开几条互相对立的候选、再由用户挑，最后落成需求定稿。要不要迁移由你定',
+          'warn',
+        )
+        return
+      }
+
+      const firstHop = nodes.filter((doc) => doc.data.stage === 'S2')
       const kept = nodes.filter((doc) => doc.data.status === 'kept')
+      const byId = new Map(nodes.map((doc) => [String(doc.data.id), doc]))
+      const problems = []
       if (nodes.length === 0) problems.push('还没有任何推演节点')
       for (const doc of layers) {
         const id = String(doc.data.id)
         const covering = nodes.filter((node) => (Array.isArray(node.data.from) ? node.data.from.map(String) : []).includes(id))
-        if (covering.length === 0) problems.push(`层 ${id} 没有挂任何推演节点（每层都要长出东西）`)
+        if (covering.length === 0) problems.push(`层 ${id} 没有挂任何节点（认下来的每一项都要有下文）`)
       }
       for (const doc of nodes) {
         const id = String(doc.data.id)
         const sections = sectionsOf(doc.body)
-        if (!hasContent(sections.get('推演'))) problems.push(`${id} 缺少“## 推演”（推理链）`)
-        if (doc.data.status === 'kept' && !hasContent(sections.get('反例'))) problems.push(`${id} 是保留节点但缺少“## 反例”`)
-        if (doc.data.status === 'dropped' && !hasContent(sections.get('淘汰理由'))) problems.push(`${id} 是淘汰节点但缺少“## 淘汰理由”`)
         const evidence = String(doc.data.evidence ?? '')
         if (!(evidence === '无' || EVIDENCE.test(evidence))) problems.push(`${id} 的 evidence 必须是 E1|E2|E3|无`)
+        if (doc.data.status === 'dropped' && !hasContent(sections.get('淘汰理由'))) problems.push(`${id} 是淘汰节点但缺少“## 淘汰理由”`)
+        if (isCandidate(doc)) {
+          if (!hasContent(sections.get('放弃了什么'))) {
+            problems.push(`${id} 是候选但缺少“## 放弃了什么”（不会放弃任何东西的，说明它没说到取舍）`)
+          }
+          const lines = bullets(sections.get('对立面'))
+          if (lines.length === 0) {
+            problems.push(`${id} 是候选但缺少“## 对立面”（它和哪一条不能同时成立）`)
+            continue
+          }
+          const targets = [...lines.join(' ').matchAll(/N-\d{3}/g)].map((match) => match[0])
+          if (targets.length === 0) problems.push(`${id} 的“## 对立面”里没有写出对立的节点 ID`)
+          for (const target of new Set(targets)) {
+            const other = byId.get(target)
+            if (other === undefined) {
+              problems.push(`${id} 的对立面指向不存在的 ${target}`)
+              continue
+            }
+            const back = bullets(sectionsOf(other.body).get('对立面')).join(' ')
+            if (!back.includes(id)) {
+              problems.push(`${id} 与 ${target} 的对立没有互指：去 ${target} 的“## 对立面”里也写上 ${id}（单向不算对立）`)
+            }
+          }
+        } else {
+          if (!hasContent(sections.get('推演'))) problems.push(`${id} 缺少“## 推演”（推理链；候选不要求这一节，定论要求）`)
+          if (doc.data.status === 'kept' && !hasContent(sections.get('反例'))) problems.push(`${id} 是保留的定论但缺少“## 反例”`)
+        }
       }
       if (nodes.length > 0 && kept.length === 0) problems.push('没有任何保留节点')
-      add('stage.S2.derivation', problems.length === 0, problems.join('；'))
+      add('stage.S2.nodes', problems.length === 0, problems.join('；'))
+
+      // The landing point of the first hop: the sentence the user can point at.
+      const needProblems = []
+      if (!need.ok) needProblems.push('concept/need.md 不存在：第一跳没有落点，第二跳就没有出发点')
+      else {
+        if (!NEED_STATUS.has(need.data.status)) needProblems.push('status 必须是 draft|settled')
+        else if (need.data.status !== 'settled') needProblems.push('status 还是 draft：这一句还没拿到用户的"对，就是这个"')
+        const sections = sectionsOf(need.body)
+        const sentence = firstLine(sections.get('定稿'))
+        if (sentence === '') needProblems.push('缺少“## 定稿”或内容为空')
+        else if (sentence.length > 120) needProblems.push(`定稿 ${sentence.length} 字 > 120 字（说不短说明第一跳还没收拢）`)
+        const listed = bullets(sections.get('每一项来自哪一条')).join(' ')
+        const missing = firstHop
+          .filter((doc) => doc.data.status === 'kept' && isConclusion(doc) && !listed.includes(String(doc.data.id)))
+          .map((doc) => String(doc.data.id))
+        if (missing.length > 0) {
+          needProblems.push(`这些保留的第一跳定论没有出现在「## 每一项来自哪一条」里：${missing.join(', ')}——定稿必须由它们合起来，不能另起一句`)
+        }
+      }
+      add('stage.S2.need', needProblems.length === 0, needProblems.join('；'))
     },
     S3: () => {
       const doc = readDoc(conceptPath)
@@ -666,11 +787,21 @@ export function validate(root, options = {}) {
       }
       const required = legacy
         ? ['判据', '边界', '非目标', '反例与失败边界', '淘汰的竞争节点']
-        : ['这意味着什么', '这不意味着什么', '它生成的主张', '边界', '非目标', '反例与失败边界', '承接了哪些层的什么', '淘汰的竞争概念']
+        : ['这意味着什么', '这不意味着什么', '它生成的主张', '边界', '非目标', '反例与失败边界', '从需求定稿来的哪一句', '承接了哪些层的什么', '淘汰的竞争概念']
       for (const heading of required) {
         if (!hasContent(sections.get(heading))) problems.push(`缺少“## ${heading}”或内容为空`)
       }
       if (!legacy) {
+        // The second hop has to lay out candidates too, not jump straight from the
+        // settled need to a concept. Without this, the concept is my first idea.
+        const secondHop = nodes.filter((doc) => doc.data.stage === 'S3')
+        const candidates = secondHop.filter((doc) => isCandidate(doc))
+        if (secondHop.length === 0 || candidates.length === 0) {
+          problems.push('第二跳没有任何候选节点（stage: S3 的 kind: 候选）：从需求定稿直接跳到理念，摊开这一步被跳过了')
+        }
+        if (!need.ok || need.data.status !== 'settled') {
+          problems.push('concept/need.md 尚未 status: settled：顶芽必须长在需求定稿上')
+        }
         const generates = bullets(sections.get('它生成的主张')).length
         if (generates > 0 && generates < 3) problems.push(`“## 它生成的主张”只有 ${generates} 条 < 3 条：概念要能生成做法，派不出三条说明它还只是个形容词`)
         if (bullets(sections.get('这意味着什么')).length < 2) problems.push('“## 这意味着什么”少于 2 条')
@@ -697,9 +828,22 @@ export function validate(root, options = {}) {
       const nouns = bullets(sections.get('关键名词'))
       if (nouns.length === 0) problems.push('缺少“## 关键名词”条目（一句话里的自造词必须落到术语表）')
       if (nouns.length > nounLimit) problems.push(`关键名词 ${nouns.length} 个 > ${nounLimit} 个（一个理念背不动这么多新词）`)
-      const confirmed = new Set(glossary.terms.filter((term) => term.status === 'confirmed').map((term) => term.name))
-      for (const noun of nouns) {
-        if (!confirmed.has(noun)) problems.push(`关键名词「${noun}」在术语表里不存在或尚未确认（[确认]）`)
+      // 关键名词与术语名都做同一套归一：去掉 markdown 强调、去掉 `[确认]` 标记、
+      // 去掉冒号后面的定义；只留术语名本身。模板给的是 `- <术语>`，而术语表要求
+      // `- **术语** [确认]：定义`，两边写法不同但指的是同一个词，故比较前先归一。
+      const termName = (text) => String(text)
+        .replace(/^[-*]\s+/, '')
+        .replace(/\*\*/g, '')
+        .replace(/\[[^\]]*\]/g, '')
+        .split(/[:：]/)[0]
+        .replace(/[（(].*$/, '')
+        .trim()
+      const confirmed = new Set(
+        glossary.terms.filter((term) => term.status === 'confirmed').map((term) => termName(term.name)),
+      )
+      for (const nounText of nouns) {
+        const noun = termName(nounText)
+        if (!confirmed.has(noun)) problems.push(`关键名词「${nounText}」在术语表里不存在或尚未确认（[确认]）`)
       }
       const coverage = legacy ? sections.get('分层覆盖') : sections.get('承接了哪些层的什么')
       const uncovered = uncoveredLayers(layers.map((item) => String(item.data.id)), coverage ?? '', sections.get('非目标') ?? '')
@@ -758,8 +902,11 @@ export function validate(root, options = {}) {
       if (!hasContent(sections.get('已知反对与回应'))) problems.push('缺少“## 已知反对与回应”或内容为空')
       // Only kept branches are walked: a dropped node was left out of the concept
       // on purpose, and the recheck record is what keeps it accounted for.
+      // Only kept *conclusions* are walked: candidates are the alternatives that
+      // were laid out and are accounted for by the recheck record, not links in
+      // the chain that reaches the concept.
       const keptForChain = nodes
-        .filter((item) => item.data.status === 'kept')
+        .filter((item) => item.data.status === 'kept' && isConclusion(item))
         .map((item) => String(item.data.id))
       const conceptLegacy = !hasContent(sections.get('这意味着什么')) && hasContent(sections.get('判据'))
       const chain = chainProblems(sections.get('推演链') ?? '', parents, keptForChain, !conceptLegacy)
@@ -892,6 +1039,7 @@ export function validate(root, options = {}) {
       layers: layers.length,
       layersConfirmed: layers.filter((doc) => doc.data.status === 'confirmed').length,
       nodes: nodes.length,
+      nodesCandidate: nodes.filter((doc) => isCandidate(doc)).length,
       nodesKept: nodes.filter((doc) => doc.data.status === 'kept').length,
       nodesDropped: nodes.filter((doc) => doc.data.status === 'dropped').length,
       mechanisms: mechanisms.length,
@@ -1062,11 +1210,11 @@ function chainProblems(text, parents, keptNodes = [], strict = true) {
     // under the old shape talk *about* their chain in paragraphs, and those must
     // not be counted as chains.
     if (/^[>*]|^\*\*|\*\*$|：$|:$/.test(line)) continue
-    const tokens = [...line.matchAll(/(?:seed|R-000|L-\d{3}|N-\d{3}|M-\d{3})/g)].map((match) => match[0])
+    const tokens = [...line.matchAll(/(?:seed|R-000|need|L-\d{3}|N-\d{3}|M-\d{3})/g)].map((match) => match[0])
       .filter((token, index, all) => index === 0 || token !== all[index - 1])
     if (tokens.length > 0) chains.push(tokens)
   }
-  if (chains.length === 0) return { problems: ['“## 推演链”为空：必须写出从种子到顶芽的节点序列（seed → L-00N → N-00N → …），每行一条分支'], warnings: [] }
+  if (chains.length === 0) return { problems: ['“## 推演链”为空：必须写出从种子到顶芽的节点序列（seed → L-00N → N-00N → need → N-00N → …），每行一条分支'], warnings: [] }
   const problems = []
   const warnings = []
   const covered = new Set()
@@ -1076,14 +1224,25 @@ function chainProblems(text, parents, keptNodes = [], strict = true) {
     for (let index = 1; index < tokens.length; index += 1) {
       const previous = tokens[index - 1]
       const current = tokens[index]
-      if (current.startsWith('L-')) {
+      if (current === 'need') {
+        // The settled need sits between the two hops: only a first-hop node leads
+        // into it, and only a second-hop node may leave it.
+        if (!previous.startsWith('N-')) problems.push(`推演链里 need 的前一个必须是第一跳的定论节点：${tokens.join(' → ')}`)
+      } else if (current.startsWith('L-')) {
         const parent = (parents.get(current) ?? [])[0]
         const okLink = parent === previous || (previous === 'R-000' && parent === 'seed')
         if (!okLink) problems.push(`推演链断裂：${current} 的 parent 是 ${parent || '（缺失）'}，但链上前一个节点是 ${previous}`)
       } else if (current.startsWith('N-')) {
         const from = parents.get(current) ?? []
         covered.add(current)
-        if (!from.includes(previous)) problems.push(`推演链断裂：${current} 的 from 是 [${from.join(', ')}]，不包含链上前一个节点 ${previous}`)
+        // Leaving `need` is how the second hop starts: the node must say so in its
+        // own `from`, otherwise the concept is not actually growing out of the
+        // settled need — it just happens to sit after it in the chain.
+        if (previous === 'need') {
+          if (!from.includes('need')) problems.push(`推演链断裂：${current} 的 from 是 [${from.join(', ')}]，没有指向 need——第二跳必须从需求定稿出发`)
+        } else if (!from.includes(previous)) {
+          problems.push(`推演链断裂：${current} 的 from 是 [${from.join(', ')}]，不包含链上前一个节点 ${previous}`)
+        }
       } else if (current.startsWith('M-')) {
         const from = parents.get(current) ?? []
         covered.add(current)
@@ -1094,6 +1253,11 @@ function chainProblems(text, parents, keptNodes = [], strict = true) {
     }
     const last = tokens[tokens.length - 1]
     if (!/^(N|M)-\d{3}$/.test(last)) problems.push('推演链必须以一个推演节点（N-00N）或机制命题（M-00N）收尾，它才是顶芽的直接来源')
+    if (!tokens.includes('need')) {
+      const detail = `这条推演链没有经过 need（需求定稿）：${tokens.join(' → ')}。新形状里第一跳从 seed 走到 need，第二跳再从 need 起`
+      if (strict) problems.push(detail)
+      else warnings.push(`${detail}（旧树按旧规矩检查）`)
+    }
   }
   const missed = keptNodes.filter((id) => !covered.has(id))
   if (missed.length > 0) {
@@ -1111,7 +1275,7 @@ export function renderReport(report) {
   lines.push(`讨论根: ${report.root}`)
   lines.push(`阶段: ${report.stage} ${report.stageTitle}${report.nextStage === undefined ? '（终态）' : ` → ${report.nextStage} ${STAGE_TITLES[report.nextStage]}`}`)
   lines.push(
-    `树: 层 ${stats.layers}(已确认 ${stats.layersConfirmed}) · 推演节点 ${stats.nodes}(保留 ${stats.nodesKept} / 淘汰 ${stats.nodesDropped}) · `
+    `树: 层 ${stats.layers}(已确认 ${stats.layersConfirmed}) · 推演节点 ${stats.nodes}(候选 ${stats.nodesCandidate} / 定论 ${stats.nodes - stats.nodesCandidate}；保留 ${stats.nodesKept} / 淘汰 ${stats.nodesDropped}) · `
     + `机制 ${stats.mechanisms}${stats.mechanismsDropped > 0 ? `(淘汰 ${stats.mechanismsDropped})` : ''} · `
     + `未决问题 ${stats.questionsOpen} · 决策 ${stats.decisions} · 术语 ${stats.terms}(待确认 ${stats.termsPending}) · 轮次 ${stats.rounds}`,
   )

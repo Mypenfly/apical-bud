@@ -2,26 +2,30 @@
 
 English | [中文](README.md)
 
-**A concept-deduction methodology for the phase before implementation.** Start from one possibly vague need (the *seed*), split it into layers (*roots*), derive node by node (*trunk*), converge on **exactly one concept** (the *apical bud*), state what guarantees it as mechanism propositions plus extensions (*limbs*) — and only then select the technology (*fruit*) from locked criteria.
+**A concept-deduction methodology for the phase before implementation.** Start from one possibly vague need (the *seed*), take its unactionable words apart and have **you claim each piece** (*roots*), then derive in **two hops** — the first settles what you actually need (the *settled need*), the second converges on **exactly one concept** (the *apical bud*) — state what guarantees it as mechanism propositions plus extensions (*limbs*), and only then select the technology (*fruit*) from locked criteria. **Every hop lays out several mutually exclusive candidates first, and you pick.**
 
 ```
-seed ──► roots ──► trunk ──► apical bud ──► limbs ──────► fruit
-need     layers     derivation  the concept   mechanisms    technology
-                                              + extensions
+seed ──► roots ──► trunk (two hops) ──► settled need ──► apical bud ──► limbs ──► fruit
+need     word-by-word  candidate ⇄      the sentence      the concept    mechanisms technology
+         claiming      conclusion       you point at      (exactly one)  + extensions
 ```
+
+**Why the "settled need" hop exists.** Skip it and the conversation is about ready-made solutions from my memory, not about your need. The first hop has exactly one acceptance test: **you can point at that sentence (`concept/need.md`) and say "yes, that is what I want."** That is also the point of the whole method — to make you clearer about what your own vague sentence was asking for.
 
 **The character lives in the bud, the guarantees in the limbs.** The bud answers "what does this feel like" (explicable, generative, *not* falsifiable); the `M-` mechanism propositions answer "what guarantees it" (falsifiable, with counterexamples), and they are the constraints technology selection must obey — a criterion whose source is not an `M-` turns selection into an inventory of whatever happens to be installed.
 
 Research is **fertilizer**: it supplies premises and counterexamples, never conclusions. Questions are the **vitality**: the tree grows one node per round of Q&A. Everything is file-driven — a decision that was not written down was not made.
 
-It ships as a skill (`SKILL.md` + `references/` + `templates/` + `scripts/`), and as a DSH agent preset (`dsh-preset/`) that turns the method into machinery. Six claims that are unusual for a "thinking partner":
+It ships as a skill (`SKILL.md` + `references/` + `templates/` + `scripts/`), and as a DSH agent preset (`dsh-preset/`) that turns the method into machinery. Eight claims that are unusual for a "thinking partner":
 
-1. **The conversation is the medium; files are the ledger.** Proposals, options and derivation chains are stated in chat — you never have to open a file to answer, and files record only what has already happened. A discussion degrades into "it writes, I read, I nitpick" exactly when this is violated (the DSH preset enforces it with a write guard).
-2. **Derivation, not brainstorming.** Every concept node records which parent it came from, and its ancestry must reach the seed. The gate rejects orphan nodes: an idea can be discussed, but it cannot impersonate a derivation.
-3. **Layering is itself an interpretation.** There is always more than one way to decompose a need; writing down only one silently replaces your need with my wording. So every layer keeps the competing reading it beat, and needs your confirmation.
-4. **One bud, several mechanisms, and pruned branches stay.** The concept is unique; mechanism propositions may compete and may come back. A drop is a *conditional* judgment (reason + **revival condition**), and everything discarded is re-judged in full before the tree is allowed to converge (entering S3/S5/S6/S7) — the condition may have changed.
-5. **You run the experiments; I decide whether one is needed.** When a derivation depends on how some program actually behaves: read the source first (no file and line means you did not read it), and only then hand a real-machine test to you — with a hand-off document, **a prompt you can paste as-is**, and pass/fail criteria. Never ask for a reboot when reading the source would answer it.
-6. **Terminology must not become a wall.** At most one new term per round, at most one awaiting your confirmation, and a term may not be defined using a term that is not yet defined above it. **You may rewrite any question or term, and retract any decision without giving a reason** — the old entry is marked superseded, never deleted.
+1. **The conversation is the medium; files are the ledger.** Proposals, candidates and derivation chains are stated in chat — you never have to open a file to answer, and files record only what has already happened. A discussion degrades into "it writes, I read, I nitpick" exactly when this is violated (the DSH preset enforces it with a write guard).
+2. **Derivation, not brainstorming — but a candidate may start without an argument.** Every `kind: 定论` (conclusion) node records which parent it came from, and its ancestry must reach the seed. `kind: 候选` (candidate) nodes are exempt: a candidate has no argument yet, which is exactly what makes it a candidate. Anything conjured out of nowhere is neither.
+3. **No candidates, no choice.** Every item to be settled first lays out at least two **mutually opposed** candidates (`## 对立面` must point at each other), each stating what choosing it gives up. A "candidate" with no opposite is not a candidate — it is a conclusion.
+4. **Layers come from your words.** I take the seed's words apart; **you claim each piece** (core / secondary / not it). Angles I picked myself go into the layer file's rejected-readings section — they do not impersonate your need.
+5. **One bud, several mechanisms, and pruned branches stay.** The concept is unique; mechanism propositions may compete and may come back. A drop is a *conditional* judgment (reason + **revival condition**), and everything discarded is re-judged in full before the tree is allowed to converge (entering S3/S5/S6/S7) — the condition may have changed.
+6. **When you write your own answer, I do not just go along.** Every answer is classified first (one of my options / a rewrite of my options / **new content outside them** / a restatement / a conflict with the tree), then checked against the layers and nodes already confirmed; a conflict is raised as an objection that round. If your answer was outside my options, I must first say **where my option set was wrong**.
+7. **You run the experiments; I decide whether one is needed.** When a derivation depends on how some program actually behaves: read the source first (no file and line means you did not read it), and only then hand a real-machine test to you — with a hand-off document, **a prompt you can paste as-is**, and pass/fail criteria. Never ask for a reboot when reading the source would answer it.
+8. **Terminology must not become a wall.** At most one new term per round, at most one awaiting your confirmation, and a term may not be defined using a term that is not yet defined above it. **Field names and headings count as terms too** — I ask how you want to call a new one before adding it, and I do not name mechanisms with fresh metaphors. **You may rewrite any question or term, and retract any decision without giving a reason** — the old entry is marked superseded, never deleted.
 
 ## Install
 
@@ -53,10 +57,10 @@ node scripts/gate.mjs --root design/<slug>
 Say "let's talk through this idea", "help me pin down what I actually need", "how should this concept be designed", "is this direction worth doing" — or invoke `/apical-bud` directly. The discussion creates `design/<slug>/` at the top of your repository:
 
 ```
-seed/          seed: verbatim statement + one-sentence real need + rejected phrasings + non-goals
-layers/        roots: layers of the need (L-00N)
-derivation/    trunk: derivation nodes (N-00N); pruned branches are kept
-concept/       apical bud concept.md ★ (the idea) + limbs extensions.md ★ (M- mechanisms / E- extensions)
+seed/          seed: verbatim statement + one-sentence real need + rejected phrasings + non-goals + word-by-word claims
+layers/        roots: layers (L-00N) — one piece of one word of the seed, claimed by you as "core"
+derivation/    trunk: derivation nodes (N-00N), kind: 候选 (with an opposite) / 定论 (with a derivation); pruned branches kept
+concept/       need.md ★ (the settled need, first hop) + concept.md ★ (the apical bud) + extensions.md ★ (limbs: M-/E-)
 tech/          fruit: criteria.md (locked first) → options.md → selection.md ★
 questions/     open questions (Q-00N)     decisions/  decision records (D-00N)
 glossary.md    terms ([确认] confirmed / [提案] proposed)
@@ -85,26 +89,30 @@ node scripts/gate.mjs --root design/<slug> --stage S5  # check from another stag
 
 Exit code 0 = pass, 1 = something is missing. It is also a module — a host plugin can `import { validate } from './scripts/gate.mjs'`.
 
-What it checks is **structure and traceability**: no orphan nodes, every layer confirmed with a decomposition argument and the alignment signal it owns, the concept in one sentence of ≤60 characters, its key nouns all confirmed terms, derivation chains intact hop by hop *and* covering every surviving node, mechanism propositions carrying a `服务:` line and a counterexample, criteria locked before options with at least one sourced from an `M-`, candidates attached to surviving nodes or mechanisms, and a full re-judgement record before entering S3/S5/S6/S7. It **cannot** tell whether the concept is *good* — that is the red team's job and yours.
+What it checks is **structure and traceability**: no orphan *conclusions* (candidates are exempt), candidates carrying mutually-pointing opposites, every layer claimed by you with a decomposition argument and the alignment signal it owns, the take-apart-and-claim step having actually happened, the settled need covering every surviving first-hop conclusion, the concept in one sentence of ≤60 characters, its key nouns all confirmed terms, derivation chains intact hop by hop — *through* `need` — and covering every surviving conclusion, mechanism propositions carrying a `服务:` line and a counterexample, criteria locked before options with at least one sourced from an `M-`, candidates attached to surviving nodes or mechanisms, and a full re-judgement record before entering S3/S5/S6/S7. It **cannot** tell whether the concept is *good* — that is the red team's job and yours.
 
 ## Repository layout
 
 ```
 SKILL.md                       the method itself (always-on)
 README.md / README.en.md       中文 / English
-references/protocol.md         round loop, option discipline, retraction, full re-judgement, anti-patterns
-references/seed-and-layering.md S0–S1 seed alignment, signal tracking and need layering
-references/derivation.md       S2 derivation rules, the experiment fork, honest option lists, when to retreat
+references/protocol.md         round loop, questioning discipline, answer classification, forbidden phrases, retraction, full re-judgement, anti-patterns
+references/seed-and-layering.md S0–S1 seed alignment, taking words apart and claiming pieces, signal tracking
+references/derivation.md       S2–S3 the candidate/conclusion split, the two hops, the settled need, the experiment fork, when to retreat
 references/apical.md           S3–S5 the concept, mechanism propositions and extensions, finalisation, red-team review
-references/tech-selection.md   S6–S7 criteria (sourced from M-), evidence levels, exit cost
+references/tech-selection.md   S6–S7 criteria (sourced from the settled need and from M-), evidence levels, exit cost
 references/doc-conventions.md  document contract enforced by the gate
-templates/                     19 ready-to-copy document templates (incl. handoff / recheck)
+templates/                     20 ready-to-copy document templates (incl. need / handoff / recheck)
 scripts/gate.mjs               zero-dependency gate validator (module + CLI)
 dsh-preset/                    DSH session assembly: persona, write guard, gate tool, banner, installer, self-test
 ```
 
 ## Credit and licence
 
-The questioning discipline (one question at a time, concrete options, never ask what a file can answer) is adapted from [grill-me](https://github.com/RobMitt/grill-me-skill); four things were added on top: **traceable derivation, layered confirmation, stage gates, and the right to challenge or veto**.
+The questioning discipline (one question at a time, concrete options, never ask what a file can answer) is adapted from [grill-me](https://github.com/RobMitt/grill-me-skill); four things were added on top: **traceable derivation, taking the seed's words apart, stage gates, and the right to challenge or veto**.
+
+One caveat worth stating: grill-me interrogates a plan that **already exists**, so it is convergent by nature. Lifting its "I offer options, you pick one" straight onto "open up a vague need" produces a flow where the model serves the menu and the user ticks boxes — the user produces nothing, so nothing makes them think. This version therefore separates the two: **lay the candidates out first (no argument required at that point), then have the user pick.**
+
+The "answer classification" and "when you are about to write these sentences, delete them" tables take their shape from [superpowers](https://github.com/obra/superpowers) (rationalization tables and `receiving-code-review`); "every question must state my own lean" comes from its brainstorming skill. It has no concept-deduction methodology, so only the behaviour-shaping devices were borrowed.
 
 **Licence: [MIT](LICENSE).** Use it, change it, republish it — keep the copyright notice. A methodology is worth what it is used for, so this repository picks the licence with the least friction; swap in Apache-2.0 if you want explicit patent and attribution terms.

@@ -32,10 +32,11 @@ design/<slug>/
     R-000-original.md        用户原话，永不修改
     real-need.md             ★ 种子：一句话真实需求 + 被否的表述 + 非目标
   layers/
-    L-00N-<slug>.md          需求层（根系）
+    L-00N-<slug>.md          需求层（根系）：一个词的哪一项，由用户认领
   derivation/
-    N-00N-<slug>.md          推演节点（主干）；淘汰的节点保留
+    N-00N-<slug>.md          推演节点（主干）：kind: 候选 | 定论；淘汰的节点保留
   concept/
+    need.md                  ★ 需求定稿：第一跳的产物，用户能指着说"就是这个"
     concept.md               ★ 顶芽：唯一的理念概念（气质/姿态，可解释、能生成）
     extensions.md            ★ 侧枝：M- 机制命题（可证伪，落为选型限制）+ E- 概念延伸（档位）
   tech/
@@ -73,6 +74,8 @@ design/<slug>/
 | `V-` | 裁决 | `audit/verdict.md` | 文件内小节 |
 
 规则：ID 全局唯一（门禁检查跨目录重复）；**不复用已删除的编号**；三位数字递增。
+
+两个不带编号的合法父节点：`seed`（种子）与 `need`（需求定稿 `concept/need.md`）。它们出现在 `from:`、`来源:` 与 `## 推演链` 里，写法就是这两个词本身。
 
 ### 反悔（取代、不删除）
 
@@ -125,13 +128,36 @@ updated: YYYY-MM-DD
 ```yaml
 id: N-001
 title: <推出来的主张>
-from: [L-001]         # 一个或多个：L-00N / N-00N，必须存在
+kind: 定论            # 候选 | 定论（见下）
+stage: S2             # S2 = 第一跳（把需求说定） | S3 = 第二跳（定理念）
+from: [L-001]         # 一个或多个：L-00N / N-00N / need，必须存在
 status: kept          # kept | dropped
 evidence: 无           # E1 | E2 | E3 | 无
 supersedes:           # 反悔时：它取代了哪个旧 ID
 superseded-by:        # 被反悔时：谁取代了它
 updated: YYYY-MM-DD
 ```
+
+两档的区别（门禁分别检查）：
+
+| | `kind: 候选` | `kind: 定论` |
+|---|---|---|
+| 必填小节 | `## 对立面`、`## 放弃了什么` | `## 推演`、`## 反例` |
+| `## 推演` | 不要求（还没有论证，这正是它叫候选的原因） | 必填 |
+| 祖先链 | 只要求 `from` 指向存在的 ID | 必须一路走到种子 |
+
+### 需求定稿 `concept/need.md`
+
+```yaml
+kind: settled-need
+status: settled       # draft | settled
+stage: S2
+updated: YYYY-MM-DD
+```
+
+必填小节：`## 定稿`（一句话，≤120 字）、`## 每一项来自哪一条`（逐条 `- <定稿里的成分> ← N-00N`，门禁要求覆盖第一跳全部 `kept` 的定论节点）。
+
+正文里引用它时写成 `need`（与 `seed` 同级），例：`from: [need]`、推演链里的 `… → N-003 → need → N-005 → …`。
 
 ### 问题 / 决策
 
@@ -146,11 +172,13 @@ blocking: S1          # S0..S7
 id: D-001
 title: <陈述句>
 status: proposed      # proposed | accepted | rejected | superseded
-sources: [L-001]      # accepted 时必须有来源（R-000/L-/N-），否则 assumption: true
+sources: [L-001]      # accepted 时必须有来源（R-000/need/L-/N-），否则 assumption: true
 assumption: false
 dissent: false        # true = 我反对过、用户坚持
 supersedes:
 ```
+
+决策正文必须有一节 `## 错了的代价`：如果这个决定是错的，代价是什么、什么时候会发现。**说不出代价的决定，多半是我顺着用户写的**，不是真的权衡过的。
 
 ### 其他文档
 
@@ -166,10 +194,11 @@ supersedes:
 
 | 文件 | 必须存在 | 必须有的字段行 |
 |---|---|---|
-| `seed/real-need.md` | `## 被否的表述`、`## 非目标`、`## 判定对齐的信号` | `statement`（≤80 字）、`status: confirmed`；前两节各 ≥1 条，信号节 ≥1 条 |
-| `layers/L-00N-*.md` | `## 分解理由`、`## 其他解读（被否）`、`## 判据`、`## 承接的信号`、`## 用户确认` | `parent`、`confirmed: true`、`status: confirmed`；解读与判据各 ≥1 |
-| `derivation/N-00N-*.md` | `## 推演`；保留节点还需 `## 反例`；淘汰节点还需 `## 淘汰理由` | `from`、`status`、`evidence` |
-| `concept/concept.md` | `## 核心概念（一句话）`、`## 这意味着什么`、`## 这不意味着什么`、`## 它生成的主张`（≥3）、`## 关键名词`、`## 边界`、`## 非目标`、`## 反例与失败边界`、`## 承接了哪些层的什么`、`## 淘汰的竞争概念`；S5 还需 `## 推演链`、`## 已知反对与回应` | 一句话 ≤60 字；关键名词 1–3 个且均为已确认术语；推演链从 `seed` 开始、逐跳合法、以 `N-` 收尾（允许多条） |
+| `seed/real-need.md` | `## 被否的表述`、`## 非目标`、`## 判定对齐的信号`；S1 起还需 `## 拆词与认领` | `statement`（≤80 字）、`status: confirmed`；前三节各 ≥1 条，拆词节 ≥1 条 |
+| `layers/L-00N-*.md` | `## 用户认领`、`## 分解理由`、`## 其他解读（被否）`、`## 判据`、`## 承接的信号`、`## 用户确认` | `parent`、`confirmed: true`、`status: confirmed`；解读与判据各 ≥1 |
+| `derivation/N-00N-*.md` | `kind: 候选` 需 `## 对立面`、`## 放弃了什么`；`kind: 定论` 需 `## 推演`，保留的还需 `## 反例`；淘汰的需 `## 淘汰理由` | `from`、`kind`、`stage`、`status`、`evidence` |
+| `concept/need.md` | `## 定稿`（≤120 字）、`## 每一项来自哪一条` | `kind: settled-need`、`status: settled`；来源条目覆盖第一跳全部 `kept` 定论节点 |
+| `concept/concept.md` | `## 核心概念（一句话）`、`## 这意味着什么`、`## 这不意味着什么`、`## 它生成的主张`（≥3）、`## 关键名词`、`## 边界`、`## 非目标`、`## 反例与失败边界`、`## 从需求定稿来的哪一句`、`## 承接了哪些层的什么`、`## 淘汰的竞争概念`；S5 还需 `## 推演链`、`## 已知反对与回应` | 一句话 ≤60 字；关键名词 1–3 个且均为已确认术语；推演链从 `seed` 开始、经过 `need`、逐跳合法、以 `N-` 收尾（允许多条） |
 | `concept/extensions.md` | `## M-00N <机制名>`（带 `服务:`、`## 机制`、`## 反例`）、`## E-00N <延伸名>`（≥3 条） | `类型:`（机制命题/概念延伸）；`E-` 的 `- 档位:`（必然/需求/猜测）；需求档 `- 来源:` |
 | `audit/recheck-S3|S5|S6|S7.md` | 每条待盘点项（dropped 节点、被淘汰的主张、未验证假设、`stale` 文档）一条结论 | 结论词为「维持」或「复活」 |
 | `tech/criteria.md` | `## K-00N <名>`（≥5 个） | `- 权重:`、`- 硬约束:`（是/否）、`- 来源:`（存在的 ID，含 `M-00N`）；≥1 条硬约束 |
@@ -240,17 +269,22 @@ node <skill>/scripts/gate.mjs --root design/<slug> --stage S5  # 用别的阶段
 
 | 症状 | 原因 |
 |---|---|
-| `tree.connected` 报错 | 有保留节点的祖先链没通到种子——它是插进来的灵感，不是推演 |
-| `tree.parents` 报错 | `from` / `parent` 指向了不存在的 ID，或写成了 `L-1`（必须三位：`L-001`） |
+| `tree.connected` 报错 | 有定论节点的祖先链没通到种子——它是插进来的灵感，不是推演。注意：`kind: 候选` 不查这条（摊候选时还没有论证） |
+| `tree.parents` 报错 | `from` / `parent` 指向了不存在的 ID，或写成了 `L-1`（必须三位：`L-001`）。`need` 与 `seed` 一样是允许的父节点 |
 | `stage.S1.layers` 报"未经用户确认" | 忘了 `confirmed: true` 与 `status: confirmed` 一起改 |
+| `stage.S1.words` 报"没有拆词记录" | 种子里缺 `## 拆词与认领`——拆词与认领没发生过，层是我自己切的 |
+| `stage.S1.layers` 报"缺少用户认领" | 层文件里没写它来自哪个词的哪一项 |
 | `stage.S1.layers` 报"缺少其他解读" | 只写了一种分法——分层也是解读，必须保留被否的那种 |
 | `stage.S1.layers` 报"缺少承接的信号" | 种子「判定对齐的信号」里有一条没被任何层认领，也没写进非目标 |
+| `stage.S2.nodes` 报"没有对立面" | 候选只写了一条，或几条候选没有互相指认 `## 对立面` |
+| `stage.S2.need` 报错 | `concept/need.md` 缺失、不是 `status: settled`，或 `## 每一项来自哪一条` 漏了第一跳的定论节点 |
+| `stage.S3.nodes` 报错 | 第二跳一条候选都没有——直接从需求定稿跳到理念，摊开这一步被跳过了 |
 | `stage.S3.apical` 报"关键名词在术语表里不存在" | 一句话里用了自造词，但没进术语表或还是 `[提案]` |
 | `stage.S3.apical` 报"这些层未被承接" | 每个 `L-` 层要么在「承接了哪些层的什么」里，要么在「非目标」里 |
 | `stage.S4.extensions` 报"M- 缺少 服务" | 机制命题没说清它服务概念里的哪一句——它可能放错了位置，或者概念还没收好 |
 | `recheck.*` 报错 | 目标阶段是 S3/S5/S6/S7，但 `audit/recheck-<该阶段>.md` 缺失或漏了待盘点项：先全量重判再推进 |
 | `glossary.pending` 报错 | `[提案]` 术语超过 1 个：先和用户逐个确认或删掉 |
-| `stage.S5.final` 报"推演链断裂" | 「推演链」里的相邻两个节点，在文件里并不是父子关系 |
+| `stage.S5.final` 报"推演链断裂" | 「推演链」里的相邻两个节点，在文件里并不是父子关系，或第一跳没有经过 `need` |
 | `rounds.sequence` 报错 | 轮次文件跳号（例如从 round-003 直接到 round-005） |
 | `! rounds.state-sync` 告警 | `state.round` 与轮次文件数不一致——机械记账，`apical_gate action=check` 会自动同步，不必手改，也不阻塞阶段 |
 | `stage.S7.selection` 报"推演来源" | 候选方案的 `推演来源` 不是保留状态的 `N-` 或 `M-` |

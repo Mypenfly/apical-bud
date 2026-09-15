@@ -226,6 +226,7 @@ export function treeCounts(root) {
   let layersConfirmed = 0
   let kept = 0
   let dropped = 0
+  let candidates = 0
   const read = (file) => {
     try {
       return readFileSync(file, 'utf8')
@@ -235,7 +236,9 @@ export function treeCounts(root) {
   }
   for (const file of layers) if (fieldOf(read(file), 'confirmed') === 'true') layersConfirmed += 1
   for (const file of nodes) {
-    const status = fieldOf(read(file), 'status')
+    const text = read(file)
+    const status = fieldOf(text, 'status')
+    if (fieldOf(text, 'kind') === '候选') candidates += 1
     if (status === 'kept') kept += 1
     else if (status === 'dropped') dropped += 1
   }
@@ -256,5 +259,5 @@ export function treeCounts(root) {
   } catch {
     // No glossary yet.
   }
-  return { layers: layers.length, layersConfirmed, nodes: nodes.length, kept, dropped, mechanisms, terms, pending }
+  return { layers: layers.length, layersConfirmed, nodes: nodes.length, candidates, kept, dropped, mechanisms, terms, pending }
 }

@@ -139,7 +139,7 @@ const fakeAgent = (parent = undefined) => {
 function writeSeed() {
   writeState({ schema: 1, topic: '演示：纸墨前端', slug: 'paper-ink', stage: 'S0', round: 0, gates: {}, verdict: { status: 'continue', at: null, note: '' } })
   w('seed/R-000-original.md', `---\nid: R-000\ntitle: 用户原话\nstatus: accepted\nstage: S0\nsources: []\nassumption: false\nupdated: 2026-01-01\n---\n\n> 我想要一个看着舒服的前端，别那么刺眼。\n`)
-  w('seed/real-need.md', `---\nkind: seed\nstatus: confirmed\nstatement: 让长时间读代码的人眼睛不累、注意力不被打断\nupdated: 2026-01-01\n---\n\n## 这句话是什么意思\n\n"不累"指视觉层的持续阅读负担，"不被打断"指注意力不被装饰性元素夺走。\n\n## 被否的表述\n\n- "做一个好看的界面" —— 为什么否：好看无法检验，且指向装饰而非负担。\n\n## 非目标\n\n- 不做主题市场 —— 理由：与"不被打断"无关。\n\n## 判定对齐的信号\n\n- **成立**：连续读 30 分钟不酸 —— **不成立**：读十分钟就想调亮度\n- **成立**：页面上没有东西在动 —— **不成立**：用户说"老有东西闪"\n`)
+  w('seed/real-need.md', `---\nkind: seed\nstatus: confirmed\nstatement: 让长时间读代码的人眼睛不累、注意力不被打断\nupdated: 2026-01-01\n---\n\n## 这句话是什么意思\n\n"不累"指视觉层的持续阅读负担，"不被打断"指注意力不被装饰性元素夺走。\n\n## 拆词与认领\n\n| 词 | 我拆的构成项 | 用户认领 | 去向 |\n|---|---|---|---|\n| 不累 | 亮度刺眼 · 字太小 · 颜色太花 · 看久了干涩 | 颜色太花=核心；亮度刺眼=次要；其余不算 | L-001 |\n| 不被打断 | 弹窗 · 动效 · 装饰抢眼 · 通知 | 装饰抢眼=核心；动效=次要；其余不算 | L-002 |\n\n**清单来源**：从"长时间读代码"这个场景里数出来的几类负担；没查：不同屏幕与光线条件下的差异。\n\n## 被否的表述\n\n- "做一个好看的界面" —— 为什么否：好看无法检验，且指向装饰而非负担。\n\n## 非目标\n\n- 不做主题市场 —— 理由：与"不被打断"无关。\n\n## 判定对齐的信号\n\n- **成立**：连续读 30 分钟不酸 —— **不成立**：读十分钟就想调亮度\n- **成立**：页面上没有东西在动 —— **不成立**：用户说"老有东西闪"\n`)
 }
 
 /** Advance the recorded round so `rounds.sequence` stays satisfied. */
@@ -236,18 +236,23 @@ async function main() {
   ok('S0 advance 成功', result.text.includes('S1'), result.text.split('\n')[0])
 
   w('glossary.md', `# 术语表\n\n- **纸墨感** [确认]：界面像纸与墨的关系，只有承载信息的墨色，没有装饰性的彩。\n`)
-  w('layers/L-001-visual.md', `---\nid: L-001\ntitle: 视觉层的"不累"\nparent: seed\nstatus: confirmed\nconfirmed: true\nupdated: 2026-01-02\n---\n\n## 层的内容\n\n什么视觉条件让连续阅读不产生疲劳。\n\n## 分解理由\n\n种子的判据"眼睛不累"必须靠视觉条件回答，无法由其他层代替。\n\n## 其他解读（被否）\n\n- 把"不累"理解为低对比度 —— 被否理由：对比不足在强光下更难读。\n\n## 判据\n\n- 连续阅读 30 分钟后无视觉疲劳自述。\n\n## 承接的信号\n\n- 信号一「连续读 30 分钟不酸」 —— 检验：读完后自述不酸。\n\n## 用户确认\n\n用户确认："就是别让我盯一会儿就酸。"\n`)
+  w('layers/L-001-visual.md', `---\nid: L-001\ntitle: 视觉层的"不累"\nparent: seed\nstatus: confirmed\nconfirmed: true\nupdated: 2026-01-02\n---\n\n## 用户认领\n\n来自种子里"不累"这个词的构成项「颜色太花」，用户认领为**核心**："最烦的是一屏五颜六色。"\n\n## 层的内容\n\n什么视觉条件让连续阅读不产生疲劳。\n\n## 分解理由\n\n种子的判据"眼睛不累"必须靠视觉条件回答，无法由其他层代替。\n\n## 其他解读（被否）\n\n- 把"不累"理解为低对比度 —— 被否理由：对比不足在强光下更难读。\n\n## 判据\n\n- 连续阅读 30 分钟后无视觉疲劳自述。\n\n## 承接的信号\n\n- 信号一「连续读 30 分钟不酸」 —— 检验：读完后自述不酸。\n\n## 用户确认\n\n用户确认："就是别让我盯一会儿就酸。"\n`)
   // Kept as a constant so the "stale" case below can restore it verbatim.
-  const LAYER_ATTENTION = `---\nid: L-002\ntitle: 认知层的"不被打断"\nparent: seed\nstatus: confirmed\nconfirmed: true\nupdated: 2026-01-02\n---\n\n## 层的内容\n\n什么信息组织方式不让注意力被夺走。\n\n## 分解理由\n\n种子里的"注意力不被打断"只能由信息组织回答，与视觉层不重叠。\n\n## 其他解读（被否）\n\n- 把"不被打断"理解为减少功能 —— 被否理由：功能多少与注意力无关，是组织方式的问题。\n\n## 判据\n\n- 视线不被非承载信息的元素吸引。\n\n## 承接的信号\n\n- 信号二「页面上没有东西在动」 —— 检验：静态首屏无动效。\n\n## 用户确认\n\n用户确认："对，别老有东西在我眼前动。"\n`
+  const LAYER_ATTENTION = `---\nid: L-002\ntitle: 认知层的"不被打断"\nparent: seed\nstatus: confirmed\nconfirmed: true\nupdated: 2026-01-02\n---\n\n## 用户认领\n\n来自种子里"不被打断"这个词的构成项「装饰抢眼」，用户认领为**核心**："别老有东西在我眼前晃。"\n\n## 层的内容\n\n什么信息组织方式不让注意力被夺走。\n\n## 分解理由\n\n种子里的"注意力不被打断"只能由信息组织回答，与视觉层不重叠。\n\n## 其他解读（被否）\n\n- 把"不被打断"理解为减少功能 —— 被否理由：功能多少与注意力无关，是组织方式的问题。\n\n## 判据\n\n- 视线不被非承载信息的元素吸引。\n\n## 承接的信号\n\n- 信号二「页面上没有东西在动」 —— 检验：静态首屏无动效。\n\n## 用户确认\n\n用户确认："对，别老有东西在我眼前动。"\n`
   w('layers/L-002-attention.md', LAYER_ATTENTION)
   round(2, 'S1')
   result = await call({ action: 'advance' })
   ok('S1 advance 成功', result.text.includes('S2'), result.text.split('\n')[0])
 
-  w('derivation/N-001-contrast.md', `---\nid: N-001\ntitle: 字面对比要够，色相对比要少\nfrom: [L-001]\nstatus: kept\nevidence: E2\nupdated: 2026-01-03\n---\n\n## 推演\n\n因为 L-001 要求长时间阅读不疲劳，所以需要足够的字面对比来降低识别成本；\n因为色相对比高会持续唤起注意，所以颜色应留给承载信息的少数元素。\n\n## 反例\n\n全灰配色在强光下反而更难读；因此边界是"字面对比不低于通行标准"。\n\n## 调研佐证\n\n- E1：对比度通行标准；E2：自测三种灰阶在 30 分钟阅读后的自述疲劳。\n`)
-  w('derivation/N-002-decoration.md', `---\nid: N-002\ntitle: 装饰即干扰\nfrom: [L-002]\nstatus: kept\nevidence: 无\nupdated: 2026-01-03\n---\n\n## 推演\n\n因为 L-002 的判据是视线不被非承载信息吸引，所以任何非承载信息的元素都在消耗注意力预算。\n\n## 反例\n\n完全没有层级提示时定位成本上升，因此留白与字重必须承担层级职责。\n\n## 调研佐证\n\n无（纯推演）。\n`)
-  w('derivation/N-003-paper-ink.md', `---\nid: N-003\ntitle: 纸墨：层级靠字重与留白，不靠色块与阴影\nfrom: [N-001, N-002]\nstatus: kept\nevidence: 无\nupdated: 2026-01-03\n---\n\n## 推演\n\nN-001 给出"颜色留给承载信息的元素"，N-002 给出"装饰即干扰"，两者合流：\n界面只保留纸与墨这一组关系——墨色承担信息，留白与字重承担层级。\n\n## 反例\n\n需要表达状态差异时（错误、警告）必须引入第三种颜色，此时"只有墨色"的边界被打破，需要显式例外。\n\n## 调研佐证\n\n无（纯推演）。\n`)
-  w('derivation/N-004-neon.md', `---\nid: N-004\ntitle: 暗色霓虹主题\nfrom: [L-002]\nstatus: dropped\nevidence: E3\nupdated: 2026-01-03\n---\n\n## 推演\n\n从 L-002 出发，暗色背景可以减少亮度刺激。\n\n## 反例\n\n霓虹强调色的色相对比高，与 N-001 冲突。\n\n## 调研佐证\n\n- E3：多篇二手评价称暗色主题在白天环境下可读性下降。\n\n## 淘汰理由\n\n与 N-001 的"色相对比要少"直接冲突；且装饰性强，违反 N-002。\n`)
+  // ── 第一跳（S2）：先摊候选，再由用户挑，最后落成需求定稿 ──────────────────
+  w('derivation/N-001-low-sat.md', `---\nid: N-001\ntitle: 颜色少，是把整体饱和度压低\nkind: 候选\nstage: S2\nfrom: [L-001]\nstatus: kept\nevidence: 无\nupdated: 2026-01-03\n---\n\n## 对立面\n\n- N-002：只留承载信息的那一种颜色，其余照旧鲜艳\n\n## 放弃了什么\n\n放弃了用颜色区分层级的能力——压低饱和度之后，色块之间就没什么差别了。\n`)
+  w('derivation/N-002-one-hue.md', `---\nid: N-002\ntitle: 颜色少，是只留承载信息的那一种颜色\nkind: 候选\nstage: S2\nfrom: [L-001]\nstatus: dropped\nevidence: 无\nupdated: 2026-01-03\n---\n\n## 对立面\n\n- N-001：把整体饱和度压低，保留多色体系\n\n## 放弃了什么\n\n放弃了"多色体系一眼分类"的便利。\n\n## 淘汰理由\n\n用户否掉了它："我不想连颜色都不能用，我是嫌那些没用的颜色。"当时依据的是用户原话，不是实测。\n\n## 复活条件\n\n若发现单色相无法区分状态（错误、警告），把它捡回来。\n`)
+  w('derivation/N-003-hue-one.md', `---\nid: N-003\ntitle: 色相降到一，颜色只承担信息\nkind: 定论\nstage: S2\nfrom: [L-001]\nstatus: kept\nevidence: E2\nupdated: 2026-01-03\n---\n\n## 推演\n\n因为用户认领的是"颜色太花"（不是"颜色太多"），所以要砍的是没有信息作用的色相；\n因为字面对比才是长时间阅读的识别基础，所以对比度不能一起降下去。\n\n## 反例\n\n全灰配色在强光下反而更难读；因此边界是"字面对比不低于通行标准"。\n\n## 调研佐证\n\n- E1：对比度通行标准；E2：自测三种灰阶在 30 分钟阅读后的自述疲劳。\n`)
+  w('derivation/N-004-weight.md', `---\nid: N-004\ntitle: 层级靠字重拉开\nkind: 候选\nstage: S2\nfrom: [L-002]\nstatus: kept\nevidence: 无\nupdated: 2026-01-03\n---\n\n## 对立面\n\n- N-005：层级靠留白拉开，字重保持不变\n\n## 放弃了什么\n\n放弃了"疏密"这个手段；字重档位一多，版面自己就变得热闹。\n`)
+  w('derivation/N-005-space.md', `---\nid: N-005\ntitle: 层级靠留白拉开\nkind: 候选\nstage: S2\nfrom: [L-002]\nstatus: dropped\nevidence: 无\nupdated: 2026-01-03\n---\n\n## 对立面\n\n- N-004：层级靠字重拉开，留白保持不变\n\n## 放弃了什么\n\n放弃了"小屏也能分出层级"的把握——空间不够时留白拉不开。\n\n## 淘汰理由\n\n用户否掉了纯留白："小屏上分不出来。"当时依据的是用户经验，不是实测。\n\n## 复活条件\n\n若目标场景确认为大屏、且字号阶梯受限，把它捡回来。\n`)
+  w('derivation/N-006-decoration.md', `---\nid: N-006\ntitle: 装饰即干扰，层级由留白与字重共同承担\nkind: 定论\nstage: S2\nfrom: [L-002]\nstatus: kept\nevidence: 无\nupdated: 2026-01-03\n---\n\n## 推演\n\n因为 L-002 的判据是视线不被非承载信息吸引，所以任何非承载信息的元素都在消耗注意力预算；\n因为用户在留白与字重之间不肯二选一，所以两者都要，但都不许变成装饰。\n\n## 反例\n\n完全没有层级提示时定位成本上升，因此留白与字重必须真的拉得开。\n\n## 调研佐证\n\n无（纯推演）。\n`)
+  w('derivation/N-007-neon.md', `---\nid: N-007\ntitle: 暗色霓虹主题\nkind: 定论\nstage: S2\nfrom: [L-002]\nstatus: dropped\nevidence: E3\nupdated: 2026-01-03\n---\n\n## 推演\n\n从 L-002 出发，暗色背景可以减少亮度刺激。\n\n## 反例\n\n霓虹强调色的色相对比高，与 N-003 冲突。\n\n## 调研佐证\n\n- E3：多篇二手评价称暗色主题在白天环境下可读性下降。\n\n## 淘汰理由\n\n与 N-003 的"色相降到一"直接冲突；且装饰性强，违反 N-006。\n\n## 复活条件\n\n若"不被打断"被重判为次要判据，或目标场景固定在暗环境，它可重新竞争。\n`)
+  w('concept/need.md', `---\nkind: settled-need\nstatus: settled\nstage: S2\nupdated: 2026-01-03\n---\n\n## 定稿\n\n一屏之内只用一种承载信息的颜色，层级靠留白与字重拉开；看久了不觉得花，也不觉得乱。\n\n## 每一项来自哪一条\n\n- "只用一种承载信息的颜色" ← N-003\n- "层级靠留白与字重拉开" ← N-006\n\n## 这次定下了什么、没定什么\n\n定下了：花的来源是"没有信息作用的颜色"，而不是颜色数量本身；层级手段是留白与字重并用。\n没定：暗环境下的可读性这一次不管。\n\n## 淘汰掉的候选\n\n- N-002（整体压低饱和度）、N-005（纯留白）、N-007（暗色霓虹）——理由见各节点自己的「淘汰理由」。\n`)
   round(3, 'S2')
   result = await call({ action: 'advance' })
   ok('S2 advance 成功', result.text.includes('S3'), result.text.split('\n')[0])
@@ -297,6 +302,13 @@ updated: 2026-01-04
 
 - 需要三态提示时只有墨色不够用 → 边界：允许一个语义色，且必须限定用途。
 
+## 从需求定稿来的哪一句
+
+| 需求定稿里的成分 | 由本概念的哪一句承接 |
+|---|---|
+| "只用一种承载信息的颜色" | "墨色只承担信息" |
+| "层级靠留白与字重拉开" | "层级由字重与留白承担" |
+
 ## 承接了哪些层的什么
 
 | 层 | 由本概念的哪一句承接 |
@@ -311,15 +323,21 @@ updated: 2026-01-04
 | 霓虹暗色 | 色相对比高，与 L-001 的判据冲突 | 若"不被打断"被重判为次要，它可重新竞争 |
 ${extra}`
   w('concept/concept.md', concept('draft'))
+
   round(4, 'S3')
   result = await call({ action: 'check' })
   ok('缺全量重判时拒绝进入 S3', !result.text.includes('PASS') && result.text.includes('recheck.exists'), result.text.split('\n').filter((line) => line.includes('recheck')).join(' '))
-  w('audit/recheck-S3.md', recheck('S3', ['N-004']))
+  w('audit/recheck-S3.md', recheck('S3', ['N-002', 'N-005', 'N-007']))
   result = await call({ action: 'advance' })
   ok('补上重判后 S3 advance 成功', result.text.includes('已推进') && result.text.includes('S2 → S3'), result.text.split('\n')[0])
 
+  // ── 第二跳（S3）：从需求定稿再摊一次，才允许收拢成顶芽 ────────────────────
+  w('derivation/N-008-paper-ink.md', `---\nid: N-008\ntitle: 把界面当成纸与墨\nkind: 候选\nstage: S3\nfrom: [need]\nstatus: kept\nevidence: 无\nupdated: 2026-01-04\n---\n\n## 对立面\n\n- N-009：把界面当成一块可以擦写的白板\n\n## 放弃了什么\n\n放弃了"界面是一层可以叠东西的表面"这个默认想法——纸墨不能叠。\n`)
+  w('derivation/N-009-whiteboard.md', `---\nid: N-009\ntitle: 把界面当成一块可以擦写的白板\nkind: 候选\nstage: S3\nfrom: [need]\nstatus: dropped\nevidence: 无\nupdated: 2026-01-04\n---\n\n## 对立面\n\n- N-008：把界面当成纸与墨\n\n## 放弃了什么\n\n放弃了"层级由纸面本身的疏密决定"——白板靠擦写留下的痕迹分层。\n\n## 淘汰理由\n\n用户否掉了它："白板上还是有颜色笔。"当时依据的是用户原话。\n\n## 复活条件\n\n若需求变成"可反复重排的编辑界面"，把它捡回来。\n`)
+  w('derivation/N-010-paper-ink-final.md', `---\nid: N-010\ntitle: 纸墨：层级靠字重与留白，不靠色块与阴影\nkind: 定论\nstage: S3\nfrom: [need]\nstatus: kept\nevidence: 无\nupdated: 2026-01-04\n---\n\n## 推演\n\n需求定稿要求"只用一种承载信息的颜色"，对应纸墨里的墨色只承担信息；\n需求定稿要求"层级靠留白与字重拉开"，对应纸墨里纸面自身的疏密；\n两者合流：界面只保留纸与墨这一组关系。\n\n## 反例\n\n需要表达状态差异时（错误、警告）必须引入第三种颜色，此时"只有墨色"的边界被打破，需要显式例外。\n\n## 调研佐证\n\n无（纯推演）。\n`)
+
   w('glossary.md', `# 术语表\n\n- **承载信息** [确认]：直接表达内容或层级的元素，不含装饰。\n- **纸墨感** [确认]：界面像纸与墨的关系，只有承载信息的墨色，没有装饰性的彩。\n- **可回退** [确认]：任何自动动作都能在撤销窗口内恢复。\n`)
-  w('concept/extensions.md', `# 侧枝\n\n## M-001 只有一条色相通道\n\n- 类型: 机制命题\n- 服务: 第 1 条 ← N-001\n- 档位: 必然\n- status: kept\n\n### 机制\n\n界面只通过墨色与字重表达信息与层级：除承载信息的元素外不出现第二种色相。\n可证伪：出现第二种色相即不成立。\n\n### 反例\n\n状态提示（错误、警告）需要语义色；此时必须限定用途。\n\n### 边界\n\n只管静态阅读界面；不要求候选具备主题系统。\n\n## M-002 暗色霓虹\n\n- 类型: 机制命题\n- 服务: 第 1 条 ← N-001\n- 档位: 需求\n- 来源: L-002\n- status: dropped\n- 复活条件: 若"不被打断"被重判为次要判据，它可重新竞争\n\n### 机制\n\n用高色相对比在暗背景上突出层级。\n\n### 反例\n\n白天环境下可读性下降。\n\n### 淘汰理由\n\n与 M-001 的"只有一条色相通道"直接冲突；当时的推断见 N-004。\n\n## E-001 印刷排印规则\n\n- 档位: 必然\n- 内容: 字号阶梯与行距遵循排印惯例。\n\n## E-002 阅读时长自适应\n\n- 档位: 需求\n- 来源: L-001\n- 内容: 长阅读场景自动加大行距。\n\n## E-003 纸纹理\n\n- 档位: 猜测\n- 内容: 极淡的纸纹理可能降低屏感。\n- 何时验证: 用户反馈"太像屏幕"时再试。\n`)
+  w('concept/extensions.md', `# 侧枝\n\n## M-001 只有一条色相通道\n\n- 类型: 机制命题\n- 服务: 第 1 条 ← N-010\n- 档位: 必然\n- status: kept\n\n### 机制\n\n界面只通过墨色与字重表达信息与层级：除承载信息的元素外不出现第二种色相。\n可证伪：出现第二种色相即不成立。\n\n### 反例\n\n状态提示（错误、警告）需要语义色；此时必须限定用途。\n\n### 边界\n\n只管静态阅读界面；不要求候选具备主题系统。\n\n## M-002 暗色霓虹\n\n- 类型: 机制命题\n- 服务: 第 1 条 ← N-010\n- 档位: 需求\n- 来源: L-002\n- status: dropped\n- 复活条件: 若"不被打断"被重判为次要判据，它可重新竞争\n\n### 机制\n\n用高色相对比在暗背景上突出层级。\n\n### 反例\n\n白天环境下可读性下降。\n\n### 淘汰理由\n\n与 M-001 的"只有一条色相通道"直接冲突；当时的推断见 N-007。\n\n## E-001 印刷排印规则\n\n- 档位: 必然\n- 内容: 字号阶梯与行距遵循排印惯例。\n\n## E-002 阅读时长自适应\n\n- 档位: 需求\n- 来源: L-001\n- 内容: 长阅读场景自动加大行距。\n\n## E-003 纸纹理\n\n- 档位: 猜测\n- 内容: 极淡的纸纹理可能降低屏感。\n- 何时验证: 用户反馈"太像屏幕"时再试。\n`)
   round(5, 'S4')
   result = await call({ action: 'check' })
   ok('S4 出口条件（含 M- 机制命题）通过', result.text.includes('PASS'), result.text.split('\n').filter((line) => line.includes('✗')).join(' '))
@@ -331,18 +349,18 @@ ${extra}`
     result.text.includes('拒绝推进') && result.text.includes('M-002'),
     result.text.split('\n').filter((line) => line.includes('M-002')).join(' '),
   )
-  w('audit/recheck-S5.md', recheck('S5', ['N-004', 'M-002']))
+  w('audit/recheck-S5.md', recheck('S5', ['N-002', 'N-005', 'N-007', 'N-009', 'M-002']))
   result = await call({ action: 'check' })
   ok('补上 S5 重判后 S4 通过', result.text.includes('PASS'), result.text.split('\n').filter((line) => line.includes('✗')).join(' '))
 
-  w('decisions/D-001-paper-ink.md', `---\nid: D-001\ntitle: 采用纸墨作为核心理念\nstatus: accepted\nstage: S3\nsources: [L-001, N-003]\nassumption: false\ndissent: false\nupdated: 2026-01-04\n---\n\n## 决定\n\n以 N-003 为顶芽。\n`)
+  w('decisions/D-001-paper-ink.md', `---\nid: D-001\ntitle: 采用纸墨作为核心理念\nstatus: accepted\nstage: S3\nsources: [need, N-010]\nassumption: false\ndissent: false\nupdated: 2026-01-04\n---\n\n## 决定\n\n以 N-010 为顶芽。\n`)
   w('audit/challenges.md', `# 异议与反对记录\n\n## X-001 三态提示会被牺牲\n\n- 主张: 只有墨色时错误状态无法表达\n- 证据: L-002 的判据\n- 代价: 错误提示不可见\n- 替代方案: 允许一个语义色\n- 可证伪判据: 实际界面里出现第三种颜色的频率\n- 结论: 采纳（已在边界里加入显式例外）\n`)
   w('concept/concept.md', concept('final', `
 ## 推演链
 
-seed → L-001 → N-001 → N-003
-seed → L-002 → N-002 → N-003
-seed → L-001 → N-001 → M-001
+seed → L-001 → N-003 → need → N-010
+seed → L-002 → N-006 → need → N-010
+seed → L-001 → N-003 → need → N-010 → M-001
 
 ## 已知反对与回应
 
@@ -368,7 +386,7 @@ seed → L-001 → N-001 → M-001
   writeState(stage4)
 
   const extensionsFinal = readFileSync(join(root, 'concept', 'extensions.md'), 'utf8')
-  w('concept/extensions.md', extensionsFinal.replace('- 服务: 第 1 条 ← N-001\n', ''))
+  w('concept/extensions.md', extensionsFinal.replace('- 服务: 第 1 条 ← N-010\n', ''))
   result = await call({ action: 'check' })
   ok(
     '机制命题缺 服务: 时被拦下',
@@ -387,25 +405,25 @@ seed → L-001 → N-001 → M-001
   w('layers/L-002-attention.md', LAYER_ATTENTION)
 
   process.stdout.write('\n[8.6] 重判不是盖章：维持也要写理由\n')
-  w('audit/recheck-S5.md', recheck('S5', ['N-004', 'M-002']).replace('- 理由: 演示用例里条件没有变化\n', ''))
+  w('audit/recheck-S5.md', recheck('S5', ['N-002', 'N-005', 'N-007', 'N-009', 'M-002']).replace('- 理由: 演示用例里条件没有变化\n', ''))
   result = await call({ action: 'check' })
   ok(
     '重判条目缺理由时不许推进',
     result.text.includes('recheck.S5') && result.text.includes('理由'),
     result.text.split('\n').filter((line) => line.includes('recheck')).join(' '),
   )
-  w('audit/recheck-S5.md', recheck('S5', ['N-004', 'M-002']))
+  w('audit/recheck-S5.md', recheck('S5', ['N-002', 'N-005', 'N-007', 'N-009', 'M-002']))
 
   round(6, 'S5')
   result = await call({ action: 'advance' })
   ok('S5 advance 成功', result.text.includes('已推进') && result.text.includes('S4 → S5'), result.text.split('\n')[0])
 
   w('tech/criteria.md', `---\nkind: criteria\nstatus: locked\nstage: S6\nlocked_at: "2026-01-05 09:00"\nupdated: 2026-01-05\n---\n\n# 判据\n\n## K-001 色相数量可控\n\n- 权重: 高\n- 硬约束: 是\n- 判据内容: 默认界面不需要第二种色相即可表达层级\n- 来源: M-001\n\n## K-002 字重与留白可控\n\n- 权重: 高\n- 硬约束: 否\n- 判据内容: 层级可由字重与间距表达\n- 来源: L-002\n\n## K-003 静态渲染\n\n- 权重: 中\n- 硬约束: 是\n- 判据内容: 首屏不依赖客户端脚本即可阅读\n- 来源: L-001\n\n## K-004 团队上手成本\n\n- 权重: 中\n- 硬约束: 否\n- 判据内容: 一周内可维护\n- 来源: R-000\n\n## K-005 生态寿命\n\n- 权重: 低\n- 硬约束: 否\n- 判据内容: 依赖仍在维护\n- 来源: N-001\n`)
-  w('tech/options.md', `---\nkind: options\nstatus: draft\nstage: S6\ncreated: "2026-01-05 10:00"\nupdated: 2026-01-05\n---\n\n# 候选\n\n## 清单来源\n\n本机已有的框架与手写 CSS 两条路；没查：其他渲染目标的可行性。\n\n## O-001 语义化 HTML + 单色 CSS 变量\n\n- 判定: 采纳\n- 推演来源: N-003\n- 证据: E2\n- 证据来源: 30 行原型跑通两种字重层级\n- 满足判据: K-001 满足、K-002 满足\n\n## O-002 组件库主题 + 暗色模式\n\n- 判定: 淘汰\n- 推演来源: N-004\n- 证据: E1\n- 证据来源: 官方文档\n- 拒绝理由: K-001 硬约束要求默认界面不引入第二种色相，组件库默认主题自带强调色。\n- 复活条件: 若状态提示的语义色被提升为必需，它自带强调色反而成为优点。\n`)
+  w('tech/options.md', `---\nkind: options\nstatus: draft\nstage: S6\ncreated: "2026-01-05 10:00"\nupdated: 2026-01-05\n---\n\n# 候选\n\n## 清单来源\n\n本机已有的框架与手写 CSS 两条路；没查：其他渲染目标的可行性。\n\n## O-001 语义化 HTML + 单色 CSS 变量\n\n- 判定: 采纳\n- 推演来源: N-010\n- 证据: E2\n- 证据来源: 30 行原型跑通两种字重层级\n- 满足判据: K-001 满足、K-002 满足\n\n## O-002 组件库主题 + 暗色模式\n\n- 判定: 淘汰\n- 推演来源: N-007\n- 证据: E1\n- 证据来源: 官方文档\n- 拒绝理由: K-001 硬约束要求默认界面不引入第二种色相，组件库默认主题自带强调色。\n- 复活条件: 若状态提示的语义色被提升为必需，它自带强调色反而成为优点。\n`)
   w('tech/selection.md', `---\nkind: selection\nstatus: final\nstage: S7\nupdated: 2026-01-06\n---\n\n# 选型定稿\n\n## 选定方案\n\n语义化 HTML + 单色 CSS 变量体系。\n\n## 判据对照\n\n| 判据 | 权重 | 结论 | 依据 |\n|---|---|---|---|\n| K-001 | 高 | 满足 | E2 原型 |\n\n## 拒绝理由汇总\n\n| 方案 | 失败判据 |\n|---|---|\n| O-002 | K-001 |\n\n## 退出成本与迁移\n\n换主题体系只需替换变量表，无需重写结构。\n\n## 未验证假设\n\n无\n`)
-  w('audit/recheck-S7.md', recheck('S7', ['N-004', 'M-002', 'O-002']))
+  w('audit/recheck-S7.md', recheck('S7', ['N-002', 'N-005', 'N-007', 'N-009', 'M-002', 'O-002']))
   round(7, 'S6')
-  w('audit/recheck-S6.md', recheck('S6', ['N-004', 'M-002', 'O-002']))
+  w('audit/recheck-S6.md', recheck('S6', ['N-002', 'N-005', 'N-007', 'N-009', 'M-002', 'O-002']))
   result = await call({ action: 'check' })
   ok('S6 出口条件通过', result.text.includes('PASS'), result.text.split('\n').filter((line) => line.includes('✗')).join(' '))
   result = await call({ action: 'advance' })
@@ -418,7 +436,7 @@ seed → L-001 → N-001 → M-001
   ok('S7 advance 成功', result.text.includes('已推进') && result.text.includes('S6 → S7'), result.text.split('\n')[0])
   result = await call({ action: 'advance' })
   ok('S7 是终态，拒绝推进', result.text.includes('终态'), result.text.split('\n')[0])
-  w('audit/recheck-S7.md', recheck('S7', ['N-004', 'M-002', 'O-002']))
+  w('audit/recheck-S7.md', recheck('S7', ['N-002', 'N-005', 'N-007', 'N-009', 'M-002', 'O-002']))
   result = await call({ action: 'check' })
   ok('S7 check 通过', result.text.includes('PASS'), result.text.split('\n').slice(0, 4).join(' / '))
   result = await call({ action: 'advance' })
@@ -429,12 +447,12 @@ seed → L-001 → N-001 → M-001
   const saved = state()
   saved.stage = 'S2'
   writeState(saved)
-  w('derivation/N-005-cycle-a.md', `---\nid: N-005\ntitle: 环 A\nfrom: [N-006]\nstatus: kept\nevidence: 无\nupdated: 2026-01-07\n---\n\n## 推演\n\nA 从 B 推出。\n\n## 反例\n\n无。\n\n## 调研佐证\n\n无（纯推演）。\n`)
-  w('derivation/N-006-cycle-b.md', `---\nid: N-006\ntitle: 环 B\nfrom: [N-005]\nstatus: kept\nevidence: 无\nupdated: 2026-01-07\n---\n\n## 推演\n\nB 从 A 推出。\n\n## 反例\n\n无。\n\n## 调研佐证\n\n无（纯推演）。\n`)
+  w('derivation/N-091-cycle-a.md', `---\nid: N-091\ntitle: 环 A\nfrom: [N-092]\nstatus: kept\nevidence: 无\nupdated: 2026-01-07\n---\n\n## 推演\n\nA 从 B 推出。\n\n## 反例\n\n无。\n\n## 调研佐证\n\n无（纯推演）。\n`)
+  w('derivation/N-092-cycle-b.md', `---\nid: N-092\ntitle: 环 B\nfrom: [N-091]\nstatus: kept\nevidence: 无\nupdated: 2026-01-07\n---\n\n## 推演\n\nB 从 A 推出。\n\n## 反例\n\n无。\n\n## 调研佐证\n\n无（纯推演）。\n`)
   result = await call({ action: 'advance' })
   ok('拒绝推进含孤儿/自环节点的树', result.text.includes('拒绝推进') && result.text.includes('tree.connected'), result.text.split('\n')[1])
-  rmSync(join(root, 'derivation/N-005-cycle-a.md'), { force: true })
-  rmSync(join(root, 'derivation/N-006-cycle-b.md'), { force: true })
+  rmSync(join(root, 'derivation/N-091-cycle-a.md'), { force: true })
+  rmSync(join(root, 'derivation/N-092-cycle-b.md'), { force: true })
 
   process.stdout.write('\n[7] 门禁：术语墙\n')
   w('glossary.md', `# 术语表\n\n- **承载信息** [确认]：直接表达内容或层级的元素，不含装饰。\n- **纸墨感** [确认]：界面像纸与墨的关系，只有承载信息的墨色，没有装饰性的彩。\n- **可回退** [确认]：任何自动动作都能在撤销窗口内恢复。\n- **呼吸感** [提案]：版面上让人不紧张的那种疏密。\n- **留白节奏** [提案]：空白分布形成的节拍。\n`)

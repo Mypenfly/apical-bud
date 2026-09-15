@@ -282,7 +282,7 @@ export function apply(ctx, config) {
   ctx.tools.register({
     name: 'apical_gate',
     description:
-      '读取、校验、推进「顶芽」理念推演树的阶段门禁。action=status 只读报告；action=check 校验当前阶段出口条件并记录结果；'
+      '读取、校验、推进「顶芽」需求推演树的阶段门禁。action=status 只读报告；action=check 校验当前阶段出口条件并记录结果；'
       + 'action=advance 校验通过后把 state.json.stage 推进到下一阶段——这是修改 stage 的唯一合法途径（直接改会被写守卫拒绝）；'
       + 'action=verdict 记录项目裁决（继续/转向/终止，转向即回退到更早阶段重做）；'
       + 'action=trees 列出本项目里的所有树（一个项目可以有多棵树：不同需求、不同阶段）；'
