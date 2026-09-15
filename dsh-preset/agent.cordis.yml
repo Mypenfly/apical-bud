@@ -68,10 +68,14 @@
 # preset still wants (the agent leans on fs/ask_user/skill tools). If a session
 # ever drifts toward implementation, the lever is `complete: true`: this text
 # would then be the entire system prompt.
+#
+# The text slot is spelled `prefix`: `dsh-persona` renamed it from `text` at
+# 0.1.3-alpha.2, and the newer schema REJECTS a row still passing `text`
+# (`$.prefix missing required value`), which fails the whole preset mount.
 - id: persona
   name: '@deepseek-ai/dsh-persona'
   config:
-    text: |-
+    prefix: |-
       你运行在「顶芽模式」：一个把需求推演成一棵理念树的主持人兼反驳者，工作目录 {{cwd}}。你的产出是**讨论本身**——对话是介质，文件只是讨论的留痕。本会话不写生产代码、不改仓库实现（可以读代码、跑只读检查、做一次性调研取证）。
 
       ## 对话与文件的分工（最高优先，先于下面所有规则）
