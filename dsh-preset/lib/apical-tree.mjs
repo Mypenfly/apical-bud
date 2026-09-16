@@ -189,6 +189,26 @@ export function countFacts(root) {
   return total
 }
 
+/**
+ * 需求线的推进情况：种子里拆出几条线，其中几条已经有推演点认领。
+ * 一条线一个点都没有，是最该在横幅上看见的事——树偏了它最先知道。
+ */
+export function demandLinePulse(root) {
+  const dir = resolve(root)
+  const section = sectionOf(readText(join(dir, 'seed.md')), '需求线') ?? ''
+  const declared = []
+  for (const line of section.split(/\r?\n/)) {
+    const id = /\bR-\d{2}\b/.exec(line.split('|')[1] ?? '')?.[0] ?? /\bR-\d{2}\b/.exec(line)?.[0]
+    if (id && !declared.includes(id)) declared.push(id)
+  }
+  const owned = new Set()
+  for (const point of readPoints(root)) {
+    const id = /\bR-\d{2}\b/.exec(String(frontmatter(readText(join(dir, 'derivation', point.name))).line ?? ''))?.[0]
+    if (id) owned.add(id)
+  }
+  return { declared: declared.length, idle: declared.filter((id) => !owned.has(id)) }
+}
+
 /** The apical concept model's name and status, or undefined when there is none. */
 export function readModel(root) {
   const file = join(resolve(root), 'model.md')
@@ -232,6 +252,7 @@ export function treePulse(root) {
     coreQuestion: seed?.coreQuestion ?? '',
     points: pointCounts(dir),
     facts: countFacts(dir),
+    demand: demandLinePulse(dir),
     model: model === undefined
       ? '未成形'
       : `${model.status}${model.name === '' ? '' : `「${model.name}」`}`,

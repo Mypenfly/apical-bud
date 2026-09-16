@@ -262,9 +262,12 @@ function bannerText(cwd, base) {
         ? `体检: 齐 ✓${check.warnings.length > 0 ? `（${check.warnings.length} 警告）` : ''}`
         : `体检: 缺 ${check.blockers.length} 件（${check.blockers.slice(0, 2).join('、')}）`
     const question = pulse.coreQuestion === '' ? '（seed.md 里还没写）' : pulse.coreQuestion
+    const demand = pulse.demand && pulse.demand.declared > 0
+      ? ` · 需求线 ${pulse.demand.declared}${pulse.demand.idle.length > 0 ? `（${pulse.demand.idle.join('、')} 未动）` : '（都有人推）'}`
+      : ''
     return `${pulse.slug} · 核心问题: ${question.length > 40 ? `${question.slice(0, 40)}…` : question}`
       + ` · 推演点 ${pulse.points.total}（进行中 ${pulse.points.open}/已结 ${pulse.points.closed}/悬置 ${pulse.points.paused}）`
-      + ` · 事实 ${pulse.facts} · 顶芽 ${pulse.model} · 选型 ${pulse.build} · ${checkText}`
+      + ` · 事实 ${pulse.facts}${demand} · 顶芽 ${pulse.model} · 选型 ${pulse.build} · ${checkText}`
   })
   const head = found.kind === 'ambiguous' ? `[apical-bud] ${roots.length} 个讨论根` : '[apical-bud]'
   const more = roots.length > shown.length ? ` …还有 ${roots.length - shown.length} 个（apical_check action=trees）` : ''

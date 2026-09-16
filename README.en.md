@@ -17,9 +17,10 @@ seed.md ─► facts.md ─► derivation/ ─► model.md ─► build/ ─► 
 
 A discussion tends to collapse into one of two things: **handing over a ready-made solution**, or **filling in a process**. The first skips the derivation; the second produces documents instead of thought. This version blocks both:
 
-- **The unit of work is one step of argument**: premises → inference → a conclusion that can be refuted → the question it raises. A conclusion may not be a paraphrase of another conclusion.
-- **Questions and conclusions alternate**: each point answers the previous question and hands over the next one. If the chain breaks, the `derivation/` listing shows where.
-- **Progress lives in the files and in the IDs**: one derivation point per file, numbered in order; IDs inside carry the coordinate (`Q-03.1`, `D-03.1`), and a tool-generated `map.md` lets a brand-new session pick up where you left off by reading one file.
+- **Derivation is a loop**: need → **split its words** → **argue each item** (research happens here) → coin one abstract idea → use it to explain the need and every item → derive the next conclusion → raise the next question → back to splitting. The product of a step is a **concept**, not a number and not a list.
+- **Split the need's own words**: nouns ask "what is it made of, how is it counted", adjectives ask "what are its features, how is it judged". Each item becomes a requirement line `R-01…` that must be argued and must own derivation points.
+- **Every step follows from what is already written**, and the first thing written is the user's need. `answers:` (which question it answers), `from:` (which conclusions it takes as premises — `D-` only) and `line:` (which requirement line it serves) are three different relations.
+- **Progress lives in the files and in the IDs**: one derivation point per file, numbered in order; IDs inside carry the coordinate (`Q-03.1`, `D-03.1`), and the tool-generated `map.md` carries a **requirement-line coverage table** (how far each line has come, which line has no points) plus a **concept chain**, so a brand-new session picks up by reading one file.
 - **Wording is part of the convention**: write "because / therefore / if / conversely / the cost is"; do not write "stage / gate / exit criteria / commit to disk / round / complete".
 - **A question lays out a tension, not a menu**: "these two cannot both hold — which do you give up, and why", plus "which one I am betting on, and where I might be wrong".
 
@@ -27,13 +28,13 @@ A discussion tends to collapse into one of two things: **handing over a ready-ma
 
 | File | What it holds |
 |---|---|
-| `seed.md` | The user's own words (append-only), the one-sentence need, the **core question**, word-splitting and claiming, non-goals, what counts as done, rejected phrasings |
+| `seed.md` | The user's own words (append-only), the one-sentence need, the **requirement lines (word split)**, the **core question**, non-goals, what counts as done, rejected phrasings |
 | `facts.md` | `## F-001` facts with source + grade (E1 docs/source, E2 measured, E3 second-hand) + what they are used for; a closing "what I did not check" |
 | `derivation/NN-<word>.md` | One derivation point: question / known / inference / conclusion / conversely / questions raised / user |
 | `model.md` | The abstract concept model: name, one sentence, what it is made of, seams and boundaries, what is settled vs still open, what must be decided before building |
 | `build/01-criteria.md`, `02-options.md`, `03-selection.md` | Criteria first, options after; rejects carry a rejection reason and a revival condition |
 | `handoff.md` | Self-contained handoff: acceptance, first task, a prompt you can copy into a standard session |
-| `map.md` | Progress and concept map — **tool-generated, never hand-written** |
+| `map.md` | Progress, requirement-line coverage, concept chain — **tool-generated, never hand-written** |
 | `glossary.md` | Terms: `- **term**: one plain-language definition` |
 
 A single derivation point looks like this (abridged; the full guidance is in [`references/writing.md`](references/writing.md)):
@@ -43,8 +44,11 @@ A single derivation point looks like this (abridged; the full guidance is in [`r
 point: 02
 title: reduce the bad, or add the good
 status: open
-answers: [Q-01.2]
-from: [D-01.1, F-002]
+step: coin-concept   # where in the loop: split / argue / coin-concept / explain-back / grow / raise
+line: R-02           # which requirement line it serves
+concept: good / bad tokens
+answers: [Q-01.2]    # which question raised by an earlier step it answers
+from: [D-01.1]       # which conclusions it takes as premises (D- only)
 ---
 ## Question   Q-02.1 Should density come from removing bad fragments or from adding good ones?
 ## Known      [F-002] The bad fragments one can spot at a glance are only the shallow few; the rest neither a human nor a model can pick out.
@@ -58,7 +62,13 @@ from: [D-01.1, F-002]
 
 ## The check (deliberately light)
 
-It checks **composition only**: are the four seed sections there, are `facts.md` and `glossary.md` there, is there at least one derivation point, do the points have a question and a conclusion, and are `model.md` / `build/` formed if they exist. **Everything else is a warning** (an ID that points nowhere, a missing "conversely", a parked question with no unlocking fact, a criterion with no source, options written before criteria…). It never judges a stage, never advances anything, never blocks a discussion.
+It checks **composition only**: are the four seed sections there (**including the requirement lines** — the need's own words split into `R-01…`), are `facts.md` and `glossary.md` there, is there at least one derivation point, do the points have a question and a conclusion, and are `model.md` / `build/` formed if they exist. **Everything else is a warning**:
+
+- did the derivation drift: a requirement line with no points, four points in a row on the same line, five points in a row with no new concept;
+- is an anchor wrong: a fact sitting in `from:`, a point missing `line:` / `step:` / `concept:`, an ID that points nowhere, a second point unrelated to the first;
+- did selection jump the order: a criterion with no source, options written before criteria, a parked question with no unlocking fact…
+
+It never judges a stage, never advances anything, never blocks a discussion.
 
 ```bash
 node scripts/check.mjs --root design/<slug>        # human-readable

@@ -53,9 +53,13 @@ const HEAD_OPTION = /^(O-\d{2})\b/
 const FIND_FACT = /\bF-\d{3}\b/g
 const FIND_QUESTION = /\bQ-\d{2}\.\d+\b/g
 const FIND_CONCLUSION = /\bD-\d{2}\.\d+\b/g
+const FIND_LINE = /\bR-\d{2}\b/g
 const ANY_ID = /\b([FQDKO])-(\d+(?:\.\d+)*)/g
 const ID_SHAPE = { F: /^F-\d{3}$/, Q: /^Q-\d{2}\.\d+$/, D: /^D-\d{2}\.\d+$/, K: /^K-\d{2}$/, O: /^O-\d{2}$/ }
 const SYMBOLIC = new Set(['seed', 'model', '用户'])
+
+/** 一个推演点在循环里的位置。一个点只标一个。 */
+export const STEP_VALUES = ['拆词', '论证', '立概念', '倒回去解释', '长出新结论', '生出问题']
 
 // ── 读盘 ────────────────────────────────────────────────────────────────────
 
@@ -145,6 +149,66 @@ function idsIn(text, pattern) {
     out.push(match[1] ?? match[0])
   }
   return out
+}
+
+/** 编号属于哪个推演点（`D-05.5` → `05`）；拿不到就返回空串。 */
+function orderOfId(id) {
+  return /^[QDR]-?(\d{2})/.exec(String(id))?.[1] ?? ''
+}
+
+/**
+ * 种子里「需求线」一节的各行：`R-01 | 需求里的词 | 拆出来的项 | 用户认领`。
+ * 表格与列表都认；拿不到 R- 编号的行不算（旧形状的「拆词与认领」就落在这里）。
+ */
+export function demandLines(seed) {
+  const section = seed?.sections.get('需求线') ?? ''
+  const rows = tableRows(section)
+  for (const line of bullets(section)) {
+    const cells = line.split('|').map((cell) => cell.trim()).filter(Boolean)
+    if (cells.length >= 2) rows.push(cells)
+  }
+  const out = []
+  const seen = new Set()
+  for (const cells of rows) {
+    const id = /\bR-\d{2}\b/.exec(cells[0] ?? '')?.[0]
+    if (!id || seen.has(id)) continue
+    seen.add(id)
+    const clean = (value) => String(value ?? '').replace(/\*\*/g, '').trim()
+    out.push({
+      id,
+      word: clean(cells[1]),
+      question: clean(cells[2]),
+      claim: clean(cells[cells.length - 1]),
+    })
+  }
+  return out
+}
+
+/** 点自己定义的编号（`D-05.5` 只算推演点 05 的），去重；避免把交叉引用当成自己的结论。 */
+function ownIds(doc, section, pattern, order) {
+  if (!order) return []
+  return [...new Set(idsIn(doc?.sections.get(section), pattern))].filter((id) => orderOfId(id) === order)
+}
+
+/** 最长的「连续同类」段：`pick` 返回分类键，返回 { key, from, to, count }。 */
+function longestRun(points, pick) {
+  let best = { key: '', from: '', to: '', count: 0 }
+  let current = { key: null, from: '', to: '', count: 0 }
+  for (const point of points) {
+    const key = pick(point)
+    if (key === null) {
+      current = { key: null, from: '', to: '', count: 0 }
+      continue
+    }
+    if (current.key === key) {
+      current.to = point.order || point.name
+      current.count += 1
+    } else {
+      current = { key, from: point.order || point.name, to: point.order || point.name, count: 1 }
+    }
+    if (current.count > best.count) best = { ...current }
+  }
+  return best
 }
 
 /** 小节标题最前面的编号（`## K-01 单机可离线` → `K-01`）。 */
@@ -240,9 +304,12 @@ export function check(root, options = {}) {
   const selection = readDoc(join(dir, 'build', '03-选型.md'))
 
   // ── 硬拦：组成成分 ────────────────────────────────────────────────────────
-  const seedMissing = ['用户原话', '一句话需求', '核心问题', '拆词与认领'].filter(
-    (name) => !hasContent(seed?.sections.get(name)),
-  )
+  const lines = demandLines(seed)
+  const lineIds = lines.map((item) => item.id)
+  const seedMissing = ['用户原话', '一句话需求', '核心问题'].filter((name) => !hasContent(seed?.sections.get(name)))
+  if (lines.length === 0) {
+    seedMissing.push('需求线（把需求里的词逐个拆成 R-01…：名词问"由什么组成、怎么算"，形容词问"有哪些特征、怎么评价"；核心问题要压住每一条线）')
+  }
   add('core.seed', seed !== null && seedMissing.length === 0, `seed.md 缺这些内容：${seedMissing.join('、')}（种子是推演的起点，缺一节都推不动）`)
   add('core.facts', facts !== null, 'facts.md 不存在：外部事实与调研结论要有一份落处（没有就写"暂无"，但不能没有这份文件）')
   add('core.glossary', glossary !== null, 'glossary.md 不存在：没有用语规范，词会越长越多、各说各的')
@@ -415,7 +482,6 @@ export function check(root, options = {}) {
   // 第一个点除外（它回答的是种子的核心问题）。另查两种顺序错误与"一步答多问"。
   const discipline = []
   const raisedBy = new Map()
-  const orderOfId = (id) => /^[QD]-(\d{2})\./.exec(String(id))?.[1] ?? ''
   for (const point of points) {
     const doc = point.doc
     if (!doc) continue
@@ -444,6 +510,80 @@ export function check(root, options = {}) {
   }
   if (discipline.length > 0) add('chain.sequence', false, discipline.join('；'), 'warn')
 
+  // 需求线：每条线都要有人推；每个点只标一个循环位置；事实不进 from:。
+  const brief = (list, limit = 4) => (list.length > limit ? `${list.slice(0, limit).join('、')}…（共 ${list.length} 个）` : list.join('、'))
+  const lineLabel = (id) => {
+    const line = lines.find((item) => item.id === id)
+    return line && line.word ? `${id}（${line.word}）` : id
+  }
+  const noLine = []
+  const unknownLine = []
+  const noStep = []
+  const badStep = []
+  const noConcept = []
+  const factFrom = []
+  for (const point of points) {
+    const doc = point.doc
+    if (!doc) continue
+    const where = `derivation/${point.name}`
+    const raw = String(doc.data.line ?? '').trim()
+    const id = /\bR-\d{2}\b/.exec(raw)?.[0]
+    if (!id) noLine.push(where)
+    else if (lineIds.length > 0 && !lineIds.includes(id)) unknownLine.push(`${where} 的 line: ${raw}`)
+    const step = String(doc.data.step ?? '').trim()
+    if (!step) noStep.push(where)
+    else if (!STEP_VALUES.includes(step)) badStep.push(`${where} 的 step: ${step}`)
+    if (!hasContent(doc.data.concept)) noConcept.push(where)
+    if (refList(doc.data.from).some((item) => /^F-\d{3}$/.test(item))) factFrom.push(where)
+  }
+  if (lineIds.length > 0 && noLine.length > 0) {
+    add('line.missing', false, `这些推演点没写 line:（它在哪条需求线上）：${brief(noLine)}——每条线都要有人推`, 'warn')
+  }
+  if (unknownLine.length > 0) add('line.unknown', false, `这些 line: 指向种子里没有的线：${brief(unknownLine)}`, 'warn')
+  if (noStep.length > 0) {
+    add('step.missing', false, `这些推演点没写 step:（它在循环里的位置）：${brief(noStep)}——拆词／论证／立概念／倒回去解释／长出新结论／生出问题，一个点只标一个`, 'warn')
+  }
+  if (badStep.length > 0) {
+    add('step.unknown', false, `这些 step: 不在六个位置里：${brief(badStep)}——六个位置是：${STEP_VALUES.join('／')}`, 'warn')
+  }
+  if (noConcept.length > 0) add('concept.missing', false, `这些推演点没写 concept:（这一步立起或推进的概念）：${brief(noConcept)}`, 'warn')
+  if (factFrom.length > 0) {
+    add('point.fact-from', false, `这些推演点的 from: 里放了事实：${brief(factFrom)}——事实是材料，写进「## 已知」；from: 只放结论 D-`, 'warn')
+  }
+
+  if (lineIds.length > 0 && points.length >= 3) {
+    const owned = new Map(lineIds.map((id) => [id, []]))
+    for (const point of points) {
+      const id = /\bR-\d{2}\b/.exec(String(point.doc?.data.line ?? ''))?.[0]
+      if (id && owned.has(id)) owned.get(id).push(point.order || point.name)
+    }
+    const idle = lineIds.filter((id) => owned.get(id).length === 0)
+    const busy = lineIds.filter((id) => owned.get(id).length >= 3)
+    if (idle.length > 0 && busy.length > 0) {
+      add('line.idle', false, `偏了：${idle.map(lineLabel).join('、')} 一个推演点都没有，而 ${busy.map((id) => `${lineLabel(id)} 已经吃掉 ${owned.get(id).length} 个`).join('、')}——每条需求线都要有人推`, 'warn')
+    }
+    const lineOf = (point) => /\bR-\d{2}\b/.exec(String(point.doc?.data.line ?? ''))?.[0] ?? null
+    const run = longestRun(points, lineOf)
+    // 只有一条需求线时，"连着几个点都在同一条线上"是必然的，不算跑偏。
+    if (lineIds.length >= 2 && run.count >= 4) {
+      add('line.run', false, `推演点 ${run.from}–${run.to} 连着 ${run.count} 个都在 ${lineLabel(run.key)} 上——换一条线，或者明说这条线为什么还没推完`, 'warn')
+    }
+  }
+
+  const newConceptAt = new Set()
+  const seenConcepts = new Set()
+  for (const point of points) {
+    const value = String(point.doc?.data.concept ?? '').trim()
+    if (!value) continue
+    if (!seenConcepts.has(value)) newConceptAt.add(point.order || point.name)
+    seenConcepts.add(value)
+  }
+  // 只在"没有新概念"的点上连段：出现新概念就断开（返回 null）。
+  const flat = longestRun(points, (point) => (newConceptAt.has(point.order || point.name) ? null : 'flat'))
+  if (flat.count >= 5) {
+    add('concept.flat', false, `推演点 ${flat.from}–${flat.to} 连着 ${flat.count} 个没有出现新概念——在算账，不在推演：一步的产物是一个概念`, 'warn')
+  }
+
   const soleAssumption = []
   for (const point of points) {
     const doc = point.doc
@@ -457,49 +597,34 @@ export function check(root, options = {}) {
     add('logic.assumption', false, `这些结论是被当成结论写的假设，且只有一个前提：${soleAssumption.join('、')}——假设不能单独支撑结论`, 'warn')
   }
 
-  // 种子拆出来的词汇（认领为核心的具体项 + 我拆的构成项 + 词本身）在推演里有没有落点。
+  // 种子拆出来的词汇（需求线里的词与拆出来的项）在推演里有没有落点。
   // 这条只做保守判断：**一个都没出现**才报——拆开的词本来就不该原样出现。
-  const claimSection = seed?.sections.get('拆词与认领') ?? ''
-  const claimRows = tableRows(claimSection)
-  for (const line of bullets(claimSection)) {
-    const cells = line.split('|').map((cell) => cell.trim()).filter(Boolean)
-    if (cells.length >= 1) claimRows.push(cells)
-  }
-  const constituents = []
   const vocabulary = []
-  for (const cells of claimRows) {
-    if (cells.length < 2) continue
-    if (/构成项|用户认领/.test(cells.join('|'))) continue // 表头
-    const word = cells[0].replace(/\*\*/g, '').trim()
-    if (word.length >= 2) vocabulary.push(word)
-    const cell = (cells[1] ?? '').replace(/\*\*/g, '')
-    for (const piece of cell.split(/[\/、,，;；]/)) {
-      const text = piece.replace(/^\s*(?:[-*]|\d+[.、)]|[①-⑳])\s*/, '').trim()
-      if (text.length < 2) continue
-      constituents.push(text)
-      for (const token of text.split(/[\s（）()【】\[\]]+/)) {
-        const clean = token.replace(/[①-⑳]/g, '').trim()
-        if (clean.length >= 2) vocabulary.push(clean)
-      }
+  for (const line of lines) {
+    for (const token of `${line.word} ${line.question}`.split(/[\s/、,，;；（）()【】[\]]+/)) {
+      const clean = token.replace(/[①-⑳]/g, '').trim()
+      if (clean.length >= 2) vocabulary.push(clean)
     }
-    const claim = cells[cells.length - 1] ?? ''
-    for (const part of claim.split(/[;；,，、]/)) {
+    for (const part of line.claim.split(/[;；,，、]/)) {
       if (!/核心/.test(part)) continue
-      const name = part.split(/[=＝:：]/)[0].replace(/[（(].*$/, '').replace(/\*\*/g, '').trim()
+      const name = part.split(/[=＝:：]/)[0].replace(/[（(].*$/, '').trim()
       if (name.length >= 2 && !/^其余$/.test(name)) vocabulary.push(name)
     }
   }
   const chainText = [...points.map((point) => point.doc?.raw ?? ''), model?.raw ?? ''].join('\n')
   const unique = [...new Set(vocabulary)].filter((item) => item.length >= 2)
-  if (unique.length > 0 && unique.every((item) => !chainText.includes(item))) {
-    add('logic.landing', false, `种子里拆出来并认领的词汇在推演里一个都没出现（${unique.slice(0, 4).join('、')}…）——推演可能跑到了别处`, 'warn')
+  // 还没有推演点时无从谈起"落点"：那不是跑偏，是还没开始。
+  if (points.length > 0 && unique.length > 0 && unique.every((item) => !chainText.includes(item))) {
+    add('logic.landing', false, `种子里拆出来的词在推演里一个都没出现（${unique.slice(0, 4).join('、')}…）——推演可能跑到了别处`, 'warn')
   }
 
   if (model) {
     const line = (model.sections.get('一句话') ?? '').replace(/\s/g, '')
     if (line.length > 60) add('model.length', false, `model.md 的「一句话」有 ${line.length} 字（>60）：概念模型的名字要一句话说得完`, 'warn')
     const coreQuestion = (seed?.sections.get('核心问题') ?? '').replace(/[\s，。？！、；：""''（）*_`-]/g, '')
-    if (coreQuestion.length >= 6) {
+    // 照模板刚建出来的树里，两边都还是 <占位>：那不是"找不到核心问题"，是还没写。
+    const stillTemplate = (model.sections.get('一句话') ?? '').includes('<') || (seed?.sections.get('核心问题') ?? '').includes('<')
+    if (coreQuestion.length >= 6 && !stillTemplate) {
       const probe = []
       for (let index = 0; index + 4 <= coreQuestion.length; index += 1) probe.push(coreQuestion.slice(index, index + 4))
       if (!probe.some((chunk) => model.raw.includes(chunk))) {
@@ -511,7 +636,8 @@ export function check(root, options = {}) {
       add('model.open', false, `还有 ${paused.length} 个悬置的推演点，但 model.md 的「## 还没确定什么」是空的——悬置的东西要出现在概念模型里`, 'warn')
     }
     const buildTouched = Boolean(criteria || optionsDoc || selection || handoff)
-    if (buildTouched && String(model.data.status ?? '') !== 'settled') {
+    const buildStillTemplate = [criteria, optionsDoc, selection].some((doc) => String(doc?.raw ?? '').includes('<'))
+    if (buildTouched && !buildStillTemplate && String(model.data.status ?? '') !== 'settled') {
       const modelStatus = String(model.data.status ?? '').trim()
       add('build.premature', false, `model.md 的 status 是「${modelStatus === '' ? '空' : modelStatus}」，还没到 settled 就动笔选型了：先把顶芽定下来，否则判据会被方案带偏`, 'warn')
     }
@@ -554,6 +680,13 @@ export function check(root, options = {}) {
   }
 
   const glossaryTerms = bullets(glossary?.sections.get('_前言') ?? glossary?.body ?? '')
+  const lineCoverage = lines.map((item) => ({
+    id: item.id,
+    word: item.word,
+    points: points
+      .filter((point) => /\bR-\d{2}\b/.exec(String(point.doc?.data.line ?? ''))?.[0] === item.id)
+      .map((point) => point.order || point.name),
+  }))
   report.stats = {
     points: points.length,
     open: points.filter((point) => String(point.doc?.data.status) === 'open').length,
@@ -563,6 +696,8 @@ export function check(root, options = {}) {
     questions: questions.size,
     facts: factIds.length,
     terms: glossaryTerms.length,
+    lines: lines.length,
+    lineCoverage,
     model: model ? String(model.data.status || 'draft') : '未成形',
     build: [criteria && '判据', optionsDoc && '方案', selection && '选型', handoff && '交接'].filter(Boolean).join('·') || '未开始',
   }
@@ -594,10 +729,13 @@ export function buildMap(root) {
   for (const point of points) {
     for (const id of refList(point.doc?.data.answers)) answeredBy.set(id, point.order)
   }
+  // 只列本点自己定义的编号：`## 结论` 里引用别点的 `[D-05.1]` 不算本点的结论。
   const questionLine = (doc, id) => lineWith(doc?.sections.get('问题'), id)
   const conclusionLine = (doc, id) => lineWith(doc?.sections.get('结论'), id)
-  const raiseLines = (doc) =>
-    idsIn(doc?.sections.get('生出的问题'), FIND_QUESTION).map((id) => ({ id, text: lineWith(doc?.sections.get('生出的问题'), id) }))
+  const ownQuestions = (doc, order) => ownIds(doc, '问题', FIND_QUESTION, order)
+  const ownConclusions = (doc, order) => ownIds(doc, '结论', FIND_CONCLUSION, order)
+  const raiseLines = (doc, order) =>
+    ownIds(doc, '生出的问题', FIND_QUESTION, order).map((id) => ({ id, text: lineWith(doc?.sections.get('生出的问题'), id) }))
 
   const lines = []
   const seedHeading = /^#\s+(.+?)\s*$/m.exec(seed?.body ?? '')?.[1] ?? ''
@@ -613,15 +751,47 @@ export function buildMap(root) {
   if (current) {
     const doc = current.doc
     lines.push(`**现在停在**：推演点 ${current.order}「${doc.data.title ?? ''}」`)
-    for (const id of idsIn(doc.sections.get('问题'), FIND_QUESTION)) lines.push(`- 在答：${questionLine(doc, id)}`)
-    for (const id of idsIn(doc.sections.get('结论'), FIND_CONCLUSION)) lines.push(`- 已得：${conclusionLine(doc, id)}`)
-    for (const item of raiseLines(doc)) lines.push(`- 待答：${item.text}`)
+    for (const id of ownQuestions(doc, current.order)) lines.push(`- 在答：${questionLine(doc, id)}`)
+    for (const id of ownConclusions(doc, current.order)) lines.push(`- 已得：${conclusionLine(doc, id)}`)
+    for (const item of raiseLines(doc, current.order)) lines.push(`- 待答：${item.text}`)
   } else if (points.length > 0) {
     lines.push(`**现在停在**：没有标着 open 的推演点${points.some((point) => String(point.doc?.data.status) === 'paused') ? '（还有悬置的点，见下）' : ''}`)
   } else {
     lines.push('**现在停在**：还没有推演点')
   }
   lines.push('')
+
+  const demand = demandLines(seed)
+  if (demand.length > 0) {
+    const owned = new Map(demand.map((item) => [item.id, []]))
+    for (const point of points) {
+      const id = /\bR-\d{2}\b/.exec(String(point.doc?.data.line ?? ''))?.[0]
+      if (id && owned.has(id)) owned.get(id).push(point.order || point.name)
+    }
+    lines.push('## 需求线')
+    for (const item of demand) {
+      const mine = owned.get(item.id)
+      const where = mine.length > 0 ? `点 ${mine.join('、')}（共 ${mine.length} 个）` : '**还没有推演点**'
+      const claim = item.claim && !/^候选/.test(item.claim) ? ` · 认领：${item.claim}` : ''
+      lines.push(`- **${item.id}${item.word ? ` ${item.word}` : ''}** ${item.question}${claim} · ${where}`)
+    }
+    lines.push('')
+  }
+
+  const chain = points.filter((point) => hasContent(point.doc?.data.concept))
+  if (chain.length > 0) {
+    const seen = new Set()
+    lines.push('## 概念链')
+    for (const point of points) {
+      const concept = String(point.doc?.data.concept ?? '').trim()
+      if (!concept) continue
+      const step = String(point.doc?.data.step ?? '').trim()
+      const fresh = !seen.has(concept)
+      seen.add(concept)
+      lines.push(`- ${point.order} ${step ? `[${step}] ` : ''}${fresh ? `**${concept}**` : `${concept}（推进）`} ← ${point.doc?.data.title ?? point.name}`)
+    }
+    lines.push('')
+  }
 
   lines.push('## 推演点')
   if (points.length === 0) {
@@ -631,10 +801,11 @@ export function buildMap(root) {
       const doc = point.doc
       const status = String(doc?.data.status ?? '?')
       const mark = status === 'closed' ? '已结' : status === 'paused' ? '悬置' : '进行中'
-      lines.push(`- [${mark}] ${point.order} ${doc?.data.title ?? point.name}`)
-      for (const id of idsIn(doc?.sections.get('问题'), FIND_QUESTION)) lines.push(`  - ${questionLine(doc, id)}`)
-      for (const id of idsIn(doc?.sections.get('结论'), FIND_CONCLUSION)) lines.push(`  - ${conclusionLine(doc, id)}`)
-      for (const item of raiseLines(doc)) {
+      const tags = [String(doc?.data.step ?? '').trim(), String(doc?.data.line ?? '').trim()].filter(Boolean).join(' · ')
+      lines.push(`- [${mark}] ${point.order} ${doc?.data.title ?? point.name}${tags ? `（${tags}）` : ''}`)
+      for (const id of ownQuestions(doc, point.order)) lines.push(`  - ${questionLine(doc, id)}`)
+      for (const id of ownConclusions(doc, point.order)) lines.push(`  - ${conclusionLine(doc, id)}`)
+      for (const item of raiseLines(doc, point.order)) {
         const answer = answeredBy.get(item.id)
         const suffix = answer && !item.text.includes('回答') ? `（由推演点 ${answer} 回答）` : ''
         lines.push(`  - ${item.text}${suffix}`)
@@ -739,6 +910,9 @@ export function renderReport(report) {
   const stats = report.stats ?? {}
   if (stats.points !== undefined) {
     lines.push(`推演点: ${stats.points}（进行中 ${stats.open} · 已结 ${stats.closed} · 悬置 ${stats.paused}） · 结论 ${stats.conclusions} · 问题 ${stats.questions} · 事实 ${stats.facts} · 术语 ${stats.terms}`)
+    if (Array.isArray(stats.lineCoverage) && stats.lineCoverage.length > 0) {
+      lines.push(`需求线: ${stats.lineCoverage.map((item) => `${item.id}${item.word ? `（${item.word}）` : ''} ${item.points.length > 0 ? `${item.points.length} 点` : '未动'}`).join(' · ')}`)
+    }
     lines.push(`顶芽: ${stats.model} · 选型: ${stats.build}`)
   }
   lines.push('')

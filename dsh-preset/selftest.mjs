@@ -97,10 +97,12 @@ statement: 同一批活的总花费不高于单 agent 基线，效果不下降
 ## 核心问题
 上下文里哪些部分在花钱、哪些部分在影响效果，系统该在哪一头动手？
 
-## 拆词与认领
-| 词 | 我拆的构成项 | 用户认领 |
-|---|---|---|
-| 低成本 | token 花费 / 机器并发 / 我的时间 | token 花费 = 核心；其余不算 |
+## 需求线
+
+| 编号 | 需求里的词 | 拆出来的项（客观问题） | 用户认领 |
+|---|---|---|---|
+| R-01 | 低成本 | 上下文里的钱花在哪几块？ | token 花费 = 核心；其余不算 |
+| R-02 | 效果 | 什么在影响输出质量？ | 候选：输出质量 = 核心（待答） |
 
 ## 非目标
 - 不改模型本身（不做推理加速、不训模型）。
@@ -138,6 +140,9 @@ const POINT_1 = `---
 point: 01
 title: 成本组成
 status: closed           # open | closed | paused
+step: 论证
+line: R-01
+concept: 成本的构成
 ---
 ## 问题
 Q-01.1 上下文里的钱都花在哪几块？
@@ -167,8 +172,11 @@ const POINT_2 = `---
 point: 02
 title: 该减少劣质还是增加优质
 status: open
+step: 立概念
+line: R-02
+concept: 优质 / 劣质 token
 answers: [Q-01.2]
-from: [D-01.1, F-002]
+from: [D-01.1]
 ---
 ## 问题
 Q-02.1 提高上下文密度，该从减少劣质片段入手，还是从增加优质片段入手？
@@ -351,10 +359,11 @@ statement: 这是一个故意写得很长的一句话需求，长到超过八十
 ## 核心问题
 演示一个缺件的讨论根会怎样？
 
-## 拆词与认领
-| 词 | 我拆的构成项 | 用户认领 |
-|---|---|---|
-| 演示 | 缺件 / 警告 | 都算 |
+## 需求线
+
+| 编号 | 需求里的词 | 拆出来的项（客观问题） | 用户认领 |
+|---|---|---|---|
+| R-01 | 演示 | 缺件会被拦吗？ | 都算 |
 `)
   w(root, 'glossary.md', GLOSSARY)
   w(root, 'derivation/01-演示点.md', `---
@@ -552,6 +561,7 @@ async function main() {
   ok('含核心问题', line.includes('上下文里哪些部分在花钱'))
   ok('含推演点计数（进行中/已结/悬置）', line.includes('推演点 2（进行中 1/已结 1/悬置 0）'))
   ok('含事实数', line.includes('事实 2'))
+  ok('含需求线进度', line.includes('需求线 2（都有人推）'), line.slice(0, 120))
   ok('含顶芽状态', line.includes('顶芽 settled「主脑系统」'))
   ok('含选型状态', line.includes('选型 判据·方案·选型·交接'))
   ok('含上一次体检结果（未运行）', line.includes('体检: 未运行'))
@@ -634,7 +644,7 @@ async function main() {
   writeFileSync(join(unanchoredRoot, 'derivation', '01-成本组成.md'), POINT_1, 'utf8')
   writeFileSync(
     join(unanchoredRoot, 'derivation', '02-另起话题.md'),
-    POINT_2.replace('answers: [Q-01.2]\nfrom: [D-01.1, F-002]\n', 'from: [F-001]\n'),
+    POINT_2.replace('answers: [Q-01.2]\nfrom: [D-01.1]\n', 'from: [seed]\n'),
     'utf8',
   )
   const unanchoredReport = checkModule.check(unanchoredRoot)
@@ -643,6 +653,59 @@ async function main() {
     unanchoredReport.warnings.some((item) => item.id === 'chain.sequence'),
     unanchoredReport.warnings.map((item) => item.id).join(','),
   )
+
+  // 需求线：种子没拆词 → 硬拦；线偏了 / 卡住了 / 事实进了 from / 连着没有新概念 → 警告。
+  const noLinesRoot = join(sandbox, 'no-lines')
+  mkdirSync(join(noLinesRoot, 'derivation'), { recursive: true })
+  writeFileSync(join(noLinesRoot, 'seed.md'), SEED.replace(/## 需求线[\s\S]*?\n\n## 非目标/, '## 非目标'), 'utf8')
+  writeFileSync(join(noLinesRoot, 'facts.md'), FACTS, 'utf8')
+  writeFileSync(join(noLinesRoot, 'glossary.md'), GLOSSARY, 'utf8')
+  writeFileSync(join(noLinesRoot, 'derivation', '01-成本组成.md'), POINT_1, 'utf8')
+  const noLinesReport = checkModule.check(noLinesRoot)
+  ok(
+    '硬拦：种子没拆需求线（core.seed）',
+    noLinesReport.ok === false
+      && noLinesReport.blockers.some((item) => item.id === 'core.seed' && item.detail.includes('需求线')),
+    noLinesReport.blockers.map((item) => item.id).join(','),
+  )
+  ok(
+    '种子没拆词时不再逐个点报 line.missing（别叠噪音）',
+    !noLinesReport.warnings.some((item) => item.id === 'line.missing'),
+    noLinesReport.warnings.map((item) => item.id).join(','),
+  )
+
+  const driftRoot = join(sandbox, 'drift')
+  mkdirSync(join(driftRoot, 'derivation'), { recursive: true })
+  writeFileSync(join(driftRoot, 'seed.md'), SEED, 'utf8')
+  writeFileSync(join(driftRoot, 'facts.md'), FACTS, 'utf8')
+  writeFileSync(join(driftRoot, 'glossary.md'), GLOSSARY, 'utf8')
+  writeFileSync(join(driftRoot, 'derivation', '01-成本组成.md'), POINT_1, 'utf8')
+  for (let index = 2; index <= 6; index += 1) {
+    const order = String(index).padStart(2, '0')
+    const body = POINT_2
+      .replace('point: 02', `point: ${order}`)
+      .replace('from: [D-01.1]', index === 4 ? 'from: [F-001]' : `from: [D-0${index - 1}.1]`)
+      .replace('answers: [Q-01.2]\n', '')
+      .replace('step: 立概念', index === 3 ? 'step: 拆词＋论证' : 'step: 立概念')
+      .replace('line: R-02', 'line: R-01')
+      .replace('concept: 优质 / 劣质 token', 'concept: 成本的构成')
+      .replace('Q-02.1', `Q-${order}.1`)
+      .replace('Q-02.2', `Q-${order}.2`)
+      .replace('D-02.1', `D-${order}.1`)
+    writeFileSync(join(driftRoot, 'derivation', `${order}-漂移点.md`), body, 'utf8')
+  }
+  const driftReport = checkModule.check(driftRoot)
+  const driftIds = driftReport.warnings.map((item) => item.id)
+  ok('警告：line.idle（一条线一个点都没有）', driftIds.includes('line.idle'), driftIds.join(','))
+  ok('警告：line.run（连着四个点同一条线）', driftIds.includes('line.run'), driftIds.join(','))
+  ok('警告：step.unknown（一步标两个位置）', driftIds.includes('step.unknown'), driftIds.join(','))
+  ok('警告：point.fact-from（把事实当前提）', driftIds.includes('point.fact-from'), driftIds.join(','))
+  ok('警告：concept.flat（连着五个点没有新概念）', driftIds.includes('concept.flat'), driftIds.join(','))
+
+  const thinReportIds = thinReport.warnings.map((item) => item.id)
+  ok('警告：line.missing（点没认领需求线）', thinReportIds.includes('line.missing'), thinReportIds.join(','))
+  ok('警告：step.missing（点没标循环位置）', thinReportIds.includes('step.missing'), thinReportIds.join(','))
+  ok('警告：concept.missing（点没写概念）', thinReportIds.includes('concept.missing'), thinReportIds.join(','))
 
   const oldReport = checkModule.check(oldRoot)
   ok('旧形状被识别为 legacy 且不拦', oldReport.kind === 'legacy' && oldReport.ok === true)
