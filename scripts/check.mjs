@@ -411,6 +411,39 @@ export function check(root, options = {}) {
     add('refs.inline', false, `正文里引用的编号不存在（写错号了？）：${[...new Set(brokenInline.map((item) => `${item.id}（${item.where}）`))].join('、')}`, 'warn')
   }
 
+  // 推演纪律：每一步都要由上一步生出来——回答前面提出的问题，或把前面的结论当前提。
+  // 第一个点除外（它回答的是种子的核心问题）。另查两种顺序错误与"一步答多问"。
+  const discipline = []
+  const raisedBy = new Map()
+  const orderOfId = (id) => /^[QD]-(\d{2})\./.exec(String(id))?.[1] ?? ''
+  for (const point of points) {
+    const doc = point.doc
+    if (!doc) continue
+    const order = point.order
+    const from = refList(doc.data.from)
+    const answers = refList(doc.data.answers)
+    if (order !== '' && order !== '01') {
+      const fromConclusion = from.some((id) => /^D-\d{2}\./.test(id))
+      const answeredEarlier = answers.some((id) => raisedBy.has(id))
+      if (!fromConclusion && !answeredEarlier) {
+        discipline.push(`${order}「${doc.data.title ?? point.name}」既没有回答前面提出的问题（answers:），也没有把前面的结论当前提（from: 里没有 D-）——它和上一步没有关系，像是另起了一个话题`)
+      }
+    }
+    for (const id of [...from, ...answers]) {
+      const target = orderOfId(id)
+      if (target !== '' && order !== '' && target >= order) {
+        discipline.push(`${order} 引用了 ${id}（属于推演点 ${target}）——推演只能往后长，不能引用自己和后面的点`)
+      }
+    }
+    if (answers.length > 1) {
+      discipline.push(`${order} 一步回答了 ${answers.length} 个问题（${answers.join('、')}）——逐级深入一次只答一个，多的拆成几步`)
+    }
+    for (const id of idsIn(doc.sections.get('生出的问题'), FIND_QUESTION)) {
+      if (!raisedBy.has(id)) raisedBy.set(id, order)
+    }
+  }
+  if (discipline.length > 0) add('chain.sequence', false, discipline.join('；'), 'warn')
+
   const soleAssumption = []
   for (const point of points) {
     const doc = point.doc

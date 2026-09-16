@@ -625,6 +625,25 @@ async function main() {
     userSourcedReport.warnings.map((item) => item.id).join(','),
   )
 
+  // 推演纪律：第 2 个点若既没回答问题、也没把上一步的结论当前提，就是另起话题。
+  const unanchoredRoot = join(sandbox, 'unanchored')
+  mkdirSync(join(unanchoredRoot, 'derivation'), { recursive: true })
+  writeFileSync(join(unanchoredRoot, 'seed.md'), SEED, 'utf8')
+  writeFileSync(join(unanchoredRoot, 'facts.md'), FACTS, 'utf8')
+  writeFileSync(join(unanchoredRoot, 'glossary.md'), GLOSSARY, 'utf8')
+  writeFileSync(join(unanchoredRoot, 'derivation', '01-成本组成.md'), POINT_1, 'utf8')
+  writeFileSync(
+    join(unanchoredRoot, 'derivation', '02-另起话题.md'),
+    POINT_2.replace('answers: [Q-01.2]\nfrom: [D-01.1, F-002]\n', 'from: [F-001]\n'),
+    'utf8',
+  )
+  const unanchoredReport = checkModule.check(unanchoredRoot)
+  ok(
+    '警告：chain.sequence（第 2 个点与上一步无关）',
+    unanchoredReport.warnings.some((item) => item.id === 'chain.sequence'),
+    unanchoredReport.warnings.map((item) => item.id).join(','),
+  )
+
   const oldReport = checkModule.check(oldRoot)
   ok('旧形状被识别为 legacy 且不拦', oldReport.kind === 'legacy' && oldReport.ok === true)
 
