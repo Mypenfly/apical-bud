@@ -32,6 +32,8 @@ seed.md ─► facts.md ─► derivation/ ─► model.md ─► build/ ─► 
 
 模板在 `templates/`：`seed` / `facts` / `point` / `model` / `criteria` / `options` / `selection` / `handoff` / `glossary`。
 
+**要动笔写推演点时，先读 [`references/writing.md`](references/writing.md)**：一个完整的正例、四种不该出现的形状（同义复述、成对生长、形容词串、公文腔）、措辞对照表、常见病症与落笔前的三个自检。
+
 **开工第一件事：读 `map.md`。** 没有就跑一次 `apical_check action=map`（它按文件重新生成）。项目里还没有讨论根，就照 `templates/` 起四件——`seed.md`、`facts.md`、`glossary.md` 和第一个推演点（`derivation/01-….md`）；用户开口就给过结论时，把那个结论登记成**待推导的结论**（见下）。
 
 ## 一个推演点怎么写
