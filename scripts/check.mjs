@@ -310,6 +310,7 @@ export function check(root, options = {}) {
   }
 
   const defined = new Set(factIds)
+  const inlineRefs = []
   const questions = new Map()
   const conclusions = new Map()
   const raisedQuestions = []
@@ -328,9 +329,21 @@ export function check(root, options = {}) {
     for (const id of conclusions.keys()) defined.add(id)
     const raiseText = doc.sections.get('生出的问题') ?? ''
     const raised = idsIn(raiseText, FIND_QUESTION)
+    for (const match of String(doc.raw).matchAll(/\[(事实|结论)\s+((?:F|D)-\d+(?:\.\d+)?)\]/g)) {
+      inlineRefs.push({ id: match[2], where, kind: match[1] })
+    }
     for (const id of raised) {
       defined.add(id)
-      raisedQuestions.push({ id, where, status, paused: /悬置|解锁|什么事实|什么时候能/.test(raiseText) })
+      const line = lineWith(raiseText, id)
+      raisedQuestions.push({
+        id,
+        where,
+        status,
+        line,
+        // 写了去向（待答 / 悬置 / 由某点回答）就算交代过；一个字都不写才算丢掉。
+        marked: /去向|待答|悬置|由推演点|由推演点\s*\d/.test(line),
+        paused: /悬置|解锁|什么事实|什么时候能/.test(line),
+      })
     }
     if (status === 'open' && raised.length === 0) {
       problems.push(`${where} 标着 open，却没有「## 生出的问题」——推演停在哪儿了？`)
@@ -378,10 +391,15 @@ export function check(root, options = {}) {
   }
 
   const unanswered = raisedQuestions
-    .filter((item) => item.status === 'closed' && !item.paused && !references.has(item.id))
+    .filter((item) => item.status === 'closed' && !item.marked && !references.has(item.id))
     .map((item) => `${item.id}（${item.where}）`)
   if (unanswered.length > 0) {
-    add('logic.dangling', false, `这些点已经结了，但它生出的问题既没人回答、也没标悬置：${unanswered.join('、')}——悬置也要写清"什么事实能解开"`, 'warn')
+    add('logic.dangling', false, `这些点已经结了，它生出的问题却连去向都没写（待答 / 悬置 / 由哪一点回答，写一个就行）：${unanswered.join('、')}`, 'warn')
+  }
+
+  const brokenInline = inlineRefs.filter((item) => !defined.has(item.id))
+  if (brokenInline.length > 0) {
+    add('refs.inline', false, `正文里引用的编号不存在（写错号了？）：${[...new Set(brokenInline.map((item) => `${item.id}（${item.where}）`))].join('、')}`, 'warn')
   }
 
   const soleAssumption = []
@@ -404,16 +422,30 @@ export function check(root, options = {}) {
     const cells = line.split('|').map((cell) => cell.trim()).filter(Boolean)
     if (cells.length >= 1) claimRows.push(cells)
   }
+  const constituents = []
   for (const cells of claimRows) {
     if (cells.length < 2) continue
+    if (/构成项|用户认领/.test(cells.join('|'))) continue // 表头
+    const cell = (cells[1] ?? '').replace(/\*\*/g, '')
+    for (const piece of cell.split(/[\/、,，;；]/)) {
+      const text = piece.replace(/^\s*(?:[-*]|\d+[.、)]|[①-⑳])\s*/, '').trim()
+      if (text.length >= 2) constituents.push(text)
+    }
     if (!/核心/.test(cells[cells.length - 1])) continue
     const word = cells[0].replace(/\*\*/g, '').trim()
     if (word.length >= 2) claimedWords.push(word)
   }
+  // 还没有人认领时，退一步：拆出来的构成项里至少要有词在推演里出现过。
+  const keywords = constituents
+    .flatMap((piece) => piece.split(/[\s（）()【】\[\]]+/))
+    .map((token) => token.replace(/[①-⑳]/g, '').trim())
+    .filter((token) => token.length >= 2)
   const chainText = [...points.map((point) => point.doc?.raw ?? ''), model?.raw ?? ''].join('\n')
   const notLanded = claimedWords.filter((word) => !chainText.includes(word))
   if (notLanded.length > 0) {
     add('logic.landing', false, `种子里认领为"核心"的词在推演里没出现：${notLanded.join('、')}——推演可能跑到了别处`, 'warn')
+  } else if (claimedWords.length === 0 && keywords.length > 0 && keywords.every((token) => !chainText.includes(token))) {
+    add('logic.landing', false, `种子里拆出来的构成项（${constituents.slice(0, 3).join('、')}…）在推演里一个都没落点——推演可能跑到了别处`, 'warn')
   }
 
   if (model) {
@@ -710,12 +742,14 @@ function main(argv) {
       return 2
     }
   }
+  const wantsMap = args.includes('--map') && treeKind(root) === 'new'
+  if (wantsMap) writeMap(root)
   const report = check(root)
   if (args.includes('--json')) {
     console.log(JSON.stringify(report, null, 2))
   } else {
     console.log(renderReport(report))
-    if (args.includes('--map') && report.kind !== 'legacy') console.log(`\nmap.md 已写出: ${writeMap(root)}`)
+    if (wantsMap && report.kind !== 'legacy') console.log(`\nmap.md 已写出: ${join(root, 'map.md')}`)
   }
   return report.ok ? 0 : 1
 }
