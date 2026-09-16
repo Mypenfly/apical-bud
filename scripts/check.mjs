@@ -304,6 +304,15 @@ export function check(root, options = {}) {
   const factNoLevel = factIds.filter((id) => !hasContent(fieldOf(sectionById(facts.sections, id), '等级')))
   if (factNoSource.length > 0) add('facts.sources', false, `这些事实没写「出处」：${factNoSource.join('、')}——没出处的事实只是印象`, 'warn')
   if (factNoLevel.length > 0) add('facts.levels', false, `这些事实没写「等级」（E1/E2/E3）：${factNoLevel.join('、')}`, 'warn')
+  const userSourced = factIds.filter((id) => {
+    const source = fieldOf(sectionById(facts.sections, id), '出处')
+    if (!hasContent(source)) return false
+    const external = /https?:\/\/|文档|规范|源码|代码|论文|arxiv|日志|命令|输出|实测|\.md|第\s*\d+\s*行|账单|报价|定价|数据/i.test(source)
+    return !external && /用户|访谈|问卷|体验|感受|偏好|反馈/.test(source)
+  })
+  if (userSourced.length > 0) {
+    add('facts.not-external', false, `这些"事实"的出处是用户自述：${userSourced.join('、')}——facts.md 只收外部信息（文档／源码／数据／实测输出）；用户说过的话属于 seed.md 与推演点的 [用户]。把用户当信息来源，推演会一路滑成对他体验的调查`, 'warn')
+  }
   const unsearched = [...(facts?.sections.keys() ?? [])].find((title) => title.includes('没查'))
   if (facts && (unsearched === undefined || !hasContent(facts.sections.get(unsearched)))) {
     add('facts.unsearched', false, 'facts.md 没有「没查的」一节：写清哪些没查、因此可能漏什么，比穷尽更重要', 'warn')
@@ -415,7 +424,8 @@ export function check(root, options = {}) {
     add('logic.assumption', false, `这些结论是被当成结论写的假设，且只有一个前提：${soleAssumption.join('、')}——假设不能单独支撑结论`, 'warn')
   }
 
-  const claimedWords = []
+  // 种子拆出来的词汇（认领为核心的具体项 + 我拆的构成项 + 词本身）在推演里有没有落点。
+  // 这条只做保守判断：**一个都没出现**才报——拆开的词本来就不该原样出现。
   const claimSection = seed?.sections.get('拆词与认领') ?? ''
   const claimRows = tableRows(claimSection)
   for (const line of bullets(claimSection)) {
@@ -423,29 +433,33 @@ export function check(root, options = {}) {
     if (cells.length >= 1) claimRows.push(cells)
   }
   const constituents = []
+  const vocabulary = []
   for (const cells of claimRows) {
     if (cells.length < 2) continue
     if (/构成项|用户认领/.test(cells.join('|'))) continue // 表头
+    const word = cells[0].replace(/\*\*/g, '').trim()
+    if (word.length >= 2) vocabulary.push(word)
     const cell = (cells[1] ?? '').replace(/\*\*/g, '')
     for (const piece of cell.split(/[\/、,，;；]/)) {
       const text = piece.replace(/^\s*(?:[-*]|\d+[.、)]|[①-⑳])\s*/, '').trim()
-      if (text.length >= 2) constituents.push(text)
+      if (text.length < 2) continue
+      constituents.push(text)
+      for (const token of text.split(/[\s（）()【】\[\]]+/)) {
+        const clean = token.replace(/[①-⑳]/g, '').trim()
+        if (clean.length >= 2) vocabulary.push(clean)
+      }
     }
-    if (!/核心/.test(cells[cells.length - 1])) continue
-    const word = cells[0].replace(/\*\*/g, '').trim()
-    if (word.length >= 2) claimedWords.push(word)
+    const claim = cells[cells.length - 1] ?? ''
+    for (const part of claim.split(/[;；,，、]/)) {
+      if (!/核心/.test(part)) continue
+      const name = part.split(/[=＝:：]/)[0].replace(/[（(].*$/, '').replace(/\*\*/g, '').trim()
+      if (name.length >= 2 && !/^其余$/.test(name)) vocabulary.push(name)
+    }
   }
-  // 还没有人认领时，退一步：拆出来的构成项里至少要有词在推演里出现过。
-  const keywords = constituents
-    .flatMap((piece) => piece.split(/[\s（）()【】\[\]]+/))
-    .map((token) => token.replace(/[①-⑳]/g, '').trim())
-    .filter((token) => token.length >= 2)
   const chainText = [...points.map((point) => point.doc?.raw ?? ''), model?.raw ?? ''].join('\n')
-  const notLanded = claimedWords.filter((word) => !chainText.includes(word))
-  if (notLanded.length > 0) {
-    add('logic.landing', false, `种子里认领为"核心"的词在推演里没出现：${notLanded.join('、')}——推演可能跑到了别处`, 'warn')
-  } else if (claimedWords.length === 0 && keywords.length > 0 && keywords.every((token) => !chainText.includes(token))) {
-    add('logic.landing', false, `种子里拆出来的构成项（${constituents.slice(0, 3).join('、')}…）在推演里一个都没落点——推演可能跑到了别处`, 'warn')
+  const unique = [...new Set(vocabulary)].filter((item) => item.length >= 2)
+  if (unique.length > 0 && unique.every((item) => !chainText.includes(item))) {
+    add('logic.landing', false, `种子里拆出来并认领的词汇在推演里一个都没出现（${unique.slice(0, 4).join('、')}…）——推演可能跑到了别处`, 'warn')
   }
 
   if (model) {

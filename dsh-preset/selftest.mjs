@@ -121,8 +121,8 @@ const FACTS = `# 事实与调研
 - 用途：支撑推演点 01
 
 ## F-002 劣质片段的浅层特征
-- 出处：用户第 3 轮原话
-- 等级：E2
+- 出处：《上下文工程实践》第 4 节（2026-08）
+- 等级：E3
 - 用途：支撑推演点 02
 
 ## 没查的
@@ -610,6 +610,21 @@ async function main() {
   const thinReport = checkModule.check(thinRoot)
   ok('缺件：core.facts 硬拦', thinReport.ok === false && thinReport.blockers.some((item) => item.id === 'core.facts'))
   ok('警告：seed.statement-length', thinReport.warnings.some((item) => item.id === 'seed.statement-length'))
+
+  // facts.md 只收外部信息：出处写成"用户说……"时应当被点名（用户的话是需求与判断，不是事实）。
+  const userSourcedRoot = join(sandbox, 'user-sourced')
+  mkdirSync(join(userSourcedRoot, 'derivation'), { recursive: true })
+  writeFileSync(join(userSourcedRoot, 'seed.md'), SEED, 'utf8')
+  writeFileSync(join(userSourcedRoot, 'glossary.md'), GLOSSARY, 'utf8')
+  writeFileSync(join(userSourcedRoot, 'facts.md'), FACTS.replace('《上下文工程实践》第 4 节（2026-08）', '用户说他以前用过，感觉不行'), 'utf8')
+  writeFileSync(join(userSourcedRoot, 'derivation', '01-成本组成.md'), POINT_1, 'utf8')
+  const userSourcedReport = checkModule.check(userSourcedRoot)
+  ok(
+    '警告：facts.not-external（用户的体验不是事实）',
+    userSourcedReport.ok === true && userSourcedReport.warnings.some((item) => item.id === 'facts.not-external'),
+    userSourcedReport.warnings.map((item) => item.id).join(','),
+  )
+
   const oldReport = checkModule.check(oldRoot)
   ok('旧形状被识别为 legacy 且不拦', oldReport.kind === 'legacy' && oldReport.ok === true)
 
