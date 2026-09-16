@@ -1,58 +1,52 @@
 /**
- * apical-guard — three mechanisms that make the tree's rules true in a running
- * session instead of requested in prose.
+ * apical-guard — the two mechanisms that keep the session inside a discussion,
+ * plus the one line of state it should never have to remember.
  *
- * 1. WRITE GUARD: a monotonic `ctx.tools.guard()` that denies `write`/`edit`
- *    outside the discussion root, so a discussion session never quietly starts
- *    editing production code.
- * 2. DISCUSSION-FIRST GUARD: creating a NEW discussion document is refused until
- *    the user has answered something in this turn. The first version of this
- *    preset let the model materialise proposals into files and then ask "please
- *    review L-001" — the user had to open a file to take part, and the Q&A flow
- *    broke. Files are the LEDGER of a discussion, never its medium: proposals,
- *    options, derivation chains and counterexamples belong in the conversation,
- *    and land on disk only once the user has answered. Record-shaped files
- *    (verbatim seed, round minutes, state, audit) and explicit user
- *    instructions to write are exempt.
- * 3. APPEND-ONLY GUARD: the same guard refuses to rewrite `seed/R-000-original.md`
- *    or an existing `rounds/round-NNN.md`. The verbatim seed and the round
- *    minutes are the tree's history; editing them would silently rewrite what
- *    was actually said.
- * 4. STATE INVARIANTS: `state.json` is whole-file only, and its `stage` and
- *    `verdict` fields belong to `apical_gate` — the one actor that can only move
- *    them after the exit criteria pass.
- * 5. STATE BANNER: one short injected message per user turn (and whenever the
- *    recorded state changes) carrying the real stage, round, tree size, pending
- *    terminology and last gate result. State the model has to remember is state
- *    it will eventually get wrong — after compaction especially — so the session
- *    reads it from the filesystem each turn.
+ * 1. WRITE GUARD (the only hard rule left): a monotonic `ctx.tools.guard()`
+ *    that permits `write`/`edit` inside a discussion root only — `design/<slug>/…`
+ *    by default, so a loose `design/notes.md` belongs to no tree and is refused
+ *    too. `config.base` moves the base directory and `allowPaths` whitelists
+ *    extra prefixes. "Discussion does not implement" used to be one of several
+ *    guard duties; with the light method it is the whole point — everything else
+ *    about the tree is a record convention, checked by `scripts/check.mjs`, not
+ *    enforced here.
+ * 2. APPEND-ONLY USER WORDS: `seed.md`'s `## 用户原话` section may only grow.
+ *    Rewriting it would silently rewrite what the user actually said, so a
+ *    `write` or `edit` that changes or drops any of those lines is denied. The
+ *    rest of `seed.md` (一句话需求 / 核心问题 / 被否的表述 …) stays editable:
+ *    those are the discussion's conclusions, not its history.
+ * 3. STATE BANNER: one short injected line per user turn (and whenever the tree
+ *    changes) with the core question, the derivation-point counts, the fact
+ *    count, the model and selection status, and the last `apical_check` result.
+ *    A long discussion compacts; state the model has to remember is state it
+ *    will eventually get wrong, so it is read off the files each turn.
  *
- * MULTIPLE TREES: a project legitimately holds several trees — one per need or
- * phase, sometimes related. A session binds to one of them (`apical_gate
- * action=bind`), and the guard then scopes writes to that tree while allowing
- * new trees to be created; before a binding exists it permits writes inside any
- * existing tree instead of refusing everything, and the banner asks for the
- * binding. See `activeTree()`.
+ * DELETED from the previous version, with the method: the "discussion-first"
+ * guard (creating a new document before the user answered), the `state.json`
+ * invariants, and the session→tree binding. Files are now the RECORD of a
+ * derivation, not the medium of the discussion, so writing one is never by
+ * itself a violation; a project with several roots is handled by naming the root
+ * (`apical_check root=…`), not by binding a session to one.
  *
  * Escape hatches, deliberately explicit: `DSH_APICAL_UNLOCK=1` in the host
- * environment disables the guard entirely (for the user, not the model), and
- * `allowPaths` in the row's config whitelists extra prefixes.
+ * environment disables the write guard entirely (for the user, not the model),
+ * and `allowPaths` in the row's config whitelists extra prefixes.
  */
 
-import { existsSync } from 'node:fs'
-import { basename, dirname, join, relative, resolve } from 'node:path'
+import { existsSync, readFileSync } from 'node:fs'
+import { relative, resolve } from 'node:path'
 import {
   DEFAULT_BASE,
   discoverRoot,
+  hasContent,
   isInside,
+  lastCheck,
   listRoots,
-  openQuestions,
-  readFocusSlug,
-  readState,
+  pulseKey,
   relPath,
-  treeCounts,
-  treeSummary,
-} from './lib/apical-state.mjs'
+  sectionOf,
+  treePulse,
+} from './lib/apical-tree.mjs'
 
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'apical-guard'
@@ -61,18 +55,20 @@ export const name = 'apical-guard'
 export const inject = ['tools']
 
 /** Injected message sources that must not count as user turns. */
-const INJECTED_SOURCES = new Set(['apical-banner', 'apical-focus', 'instruction-hint', 'skill-invocation', 'skill-catalog'])
+const INJECTED_SOURCES = new Set(['apical-banner', 'instruction-hint', 'skill-invocation', 'skill-catalog'])
 
-/** Register the guards and the per-turn state banner. */
+/** The section of `seed.md` that records what the user actually said. */
+const USER_WORDS = '用户原话'
+
+/** Register the write guard and the per-turn state banner. */
 export function apply(ctx, config) {
   const base = typeof config.base === 'string' && config.base.trim() !== '' ? config.base : DEFAULT_BASE
   const allowPaths = Array.isArray(config.allowPaths)
     ? config.allowPaths.filter((value) => typeof value === 'string' && value.trim() !== '')
     : []
   const bannerEnabled = config.banner !== false
-  const unlocked = process.env.DSH_APICAL_UNLOCK === '1'
 
-  if (!unlocked) {
+  if (process.env.DSH_APICAL_UNLOCK !== '1') {
     ctx.tools.guard((execution) => {
       try {
         return guardReason(execution, base, allowPaths)
@@ -85,7 +81,7 @@ export function apply(ctx, config) {
 
   if (!bannerEnabled) return
 
-  /** Per-session injection bookkeeping: turn cursor + last injected state. */
+  /** Per-session injection bookkeeping: turn cursor + last injected picture. */
   const marks = new Map()
 
   ctx.on('agent/pre-step', async ({ agent, signal }, next) => {
@@ -107,12 +103,7 @@ export function apply(ctx, config) {
       mark.cursor = events.length
 
       const cwd = session.header?.cwd ?? process.cwd()
-      const active = activeTree(cwd, base, agent)
-      const stateRead = active.root !== undefined ? readState(active.root) : { ok: false }
-      const hash = active.root !== undefined && stateRead.ok
-        ? `${active.kind}:${active.root}|${String(stateRead.state.stage)}|${String(stateRead.state.round)}|${String(stateRead.state.verdict?.status ?? 'continue')}`
-        : `${active.kind}:${(active.roots ?? []).map((root) => basename(root)).join(',')}`
-
+      const hash = projectHash(cwd, base)
       const newTurn = mark.turns !== mark.lastTurns
       const changed = hash !== mark.hash
       mark.lastTurns = mark.turns
@@ -120,7 +111,7 @@ export function apply(ctx, config) {
       marks.set(session.id, mark)
       if (!newTurn && !changed) return decision
 
-      const text = bannerText(cwd, base, active, stateRead)
+      const text = bannerText(cwd, base)
       if (text === '') return decision
       mark.seq += 1
       void signal
@@ -143,13 +134,14 @@ export function apply(ctx, config) {
 }
 
 /**
- * Decide whether one tool call violates the discussion session's mandate.
+ * Decide whether one tool call lands inside a discussion root.
  * @param execution - the identity-protected call from the tools pipeline.
  * @param base - base directory holding discussion roots.
  * @param allowPaths - extra cwd-relative prefixes the user whitelisted.
  * @returns a denial reason, or undefined to leave the call alone.
  */
 function guardReason(execution, base, allowPaths) {
+  if (process.env.DSH_APICAL_UNLOCK === '1') return undefined
   const toolName = execution.name
   if (toolName !== 'write' && toolName !== 'edit') return undefined
   const args = execution.arguments
@@ -163,246 +155,118 @@ function guardReason(execution, base, allowPaths) {
   }
 
   const baseDir = resolve(cwd, base)
-  const active = activeTree(cwd, base, execution.agent)
-  const scopeRoot = active.kind === 'bound' || active.kind === 'single' ? active.root : resolve(baseDir, '<slug>')
-
-  // Outside the discussion base entirely: never allowed in this mode.
-  if (!isInside(target, baseDir)) return outsideMessage(cwd, scopeRoot, target)
-
   const parts = relative(baseDir, target).split(/[\\/]/).filter((part) => part !== '')
-  if (parts.length < 2) return outsideMessage(cwd, scopeRoot, target)
-  const slug = parts[0]
-  const targetRoot = resolve(baseDir, slug)
 
-  // A tree that does not exist yet is being bootstrapped: that is exactly how a
-  // project gains its second, third, … tree, so it is allowed — but the
-  // discussion-first rule still applies, so only ledger-shaped files (state,
-  // verbatim seed, round minutes) may appear before the user has answered.
-  if (!existsSync(join(targetRoot, 'state.json'))) {
-    if (toolName === 'write' && !existsSync(target)) {
-      const bootstrap = discussionFirstReason(target, cwd, targetRoot, execution.agent)
-      if (bootstrap !== undefined) return bootstrap
-    }
-    return undefined
+  // Everything this method records grows INSIDE a discussion root, so the whole
+  // `design/` area is not enough: `design/notes.md` belongs to no tree and would
+  // be the first gap in "the files are organized this way". Two levels minimum:
+  // `design/<slug>/…`. A root that does not exist yet is fine — `design/<slug>/seed.md`
+  // is exactly how a project gains its first (or next) tree.
+  if (!isInside(target, baseDir) || parts.length < 2) {
+    return outsideMessage(base, baseDir, target, cwd, allowPaths)
   }
 
-  // Bound sessions work on one tree; switching is one tool call, and keeping it
-  // explicit is what stops a session from editing two trees by accident.
-  if ((active.kind === 'bound' || active.kind === 'single') && active.slug !== slug) {
-    return `本会话当前在讨论树 ${active.slug} 上，不能直接改 ${slug}。`
-      + `要切换：apical_gate action=bind slug=${slug}；要看全部：action=trees。`
-  }
-
-  if (dirname(target) === targetRoot && basename(target) === 'state.json') {
-    return stateInvariant(toolName, args, targetRoot)
-  }
-  const history = historyInvariant(toolName, target, targetRoot)
-  if (history !== undefined) return history
-  if (toolName === 'write' && !existsSync(target)) {
-    const discussion = discussionFirstReason(target, cwd, targetRoot, execution.agent)
-    if (discussion !== undefined) return discussion
+  // The only append-only document left: the verbatim words of the user.
+  if (parts.length === 2 && parts[1] === 'seed.md') {
+    const reason = userWordsInvariant(toolName, args, target)
+    if (reason !== undefined) return reason
   }
   return undefined
 }
 
-/**
- * Which tree this session is working on.
- *
- * Resolution order: the session's durable binding, then the single discovered
- * tree, then "several, unbound" (writes are permitted inside any of them so a
- * conversation is never hard-blocked, and the banner asks for a binding).
- * @returns `{kind:'bound'|'single'|'multi'|'none', root?, slug?, roots?, missingBinding?}`.
- */
-function activeTree(cwd, base, agent) {
-  const found = discoverRoot(cwd, base)
-  const bound = readFocusSlug(agent?.session?.events)
-  if (bound !== undefined) {
-    const root = resolve(cwd, base, bound)
-    if (existsSync(join(root, 'state.json'))) return { kind: 'bound', root, slug: bound }
-    // The binding outlived its tree: fall back and say so.
-    return { ...fallbackTree(found), missingBinding: bound }
+/** The text a `write`/`edit` would leave behind, or undefined when unknowable. */
+function resultingText(toolName, args, before) {
+  if (args === null || typeof args !== 'object') return undefined
+  if (toolName === 'write') {
+    return typeof args.content === 'string' ? args.content : undefined
   }
-  return fallbackTree(found)
-}
-
-/** Map a discovery result onto the active-tree vocabulary. */
-function fallbackTree(found) {
-  if (found.kind === 'one') return { kind: 'single', root: found.root, slug: found.slug }
-  if (found.kind === 'ambiguous') return { kind: 'multi', roots: found.roots }
-  return { kind: 'none' }
-}
-
-/** Denial text for a write outside the discussion root. */
-function outsideMessage(cwd, root, target) {
-  return `本会话是「顶芽模式」：write/edit 只允许写讨论根 ${relPath(cwd, root)}/ 以内的文件，当前目标是 ${relPath(cwd, target)}。`
-    + '要改实现请用「标准模式」新开一个会话；若这件事与讨论有关，把它写成讨论根里的文档（seed/ layers/ derivation/ questions/ decisions/）而不是代码。'
+  const oldString = typeof args.old_string === 'string' ? args.old_string : undefined
+  const newString = typeof args.new_string === 'string' ? args.new_string : undefined
+  if (oldString === undefined || oldString === '' || newString === undefined) return undefined
+  if (!before.includes(oldString)) return undefined
+  const all = args.replace_all === true || args.replaceAll === true
+  return all ? before.split(oldString).join(newString) : before.replace(oldString, newString)
 }
 
 /**
- * The tree's history is append-only: the verbatim seed may be created once, and
- * each round file may be created once. Everything else in the root is editable.
+ * `## 用户原话` is history: it may grow, never change.
  * @returns a denial reason, or undefined when the write is fine.
  */
-function historyInvariant(toolName, target, root) {
-  const rel = relative(root, target).split(/[\\/]/).join('/')
-  const isSeedOriginal = rel === 'seed/R-000-original.md'
-  const isRound = /^rounds\/round-\d{3}\.md$/.test(rel)
-  if (!isSeedOriginal && !isRound) return undefined
-  if (toolName === 'edit') {
-    return `${rel} 是 append-only 的讨论史：只能首次创建，之后不得修改。要修正理解，请写进 seed/real-need.md（种子）或新开一轮 round-NNN.md。`
-  }
-  if (existsSync(target)) {
-    return `${rel} 已存在，禁止整文件覆写（append-only）。新的一轮请写新的 round-NNN.md；用户原话永远保持原样。`
-  }
-  return undefined
-}
-
-/** Text of one `user/message` event, concatenated. */
-function userTextOf(event) {
-  const content = event?.data?.content
-  if (!Array.isArray(content)) return ''
-  return content
-    .map((block) => (block !== null && typeof block === 'object' && typeof block.text === 'string' ? block.text : ''))
-    .join('\n')
-}
-
-/** User wording that already instructs a write, so recording needs no new question. */
-const WRITE_CUES = /写|记|录|落盘|留痕|文档|改|更新|补充|加|删|整理|保存|导出|调整|应该|修正/
-
-/**
- * Files that ARE the discussion's ledger rather than a proposal: the verbatim
- * seed, round minutes, the machine state file, and the audit trail. Creating
- * these never waits for an answer — they record what already happened.
- */
-function isLedgerPath(rel) {
-  return rel === 'state.json'
-    || rel === 'README.md'
-    || rel === 'seed/R-000-original.md'
-    || /^rounds\/round-\d{3}\.md$/.test(rel)
-    || rel.startsWith('audit/')
-}
-
-/**
- * What this turn has done so far: has the user answered anything since the model
- * last touched the discussion root?
- * @returns `{ sawUser, answeredAfterWrite, userText }`.
- */
-function turnState(events, cwd, root) {
-  let lastUser = -1
-  for (let index = 0; index < events.length; index += 1) {
-    const event = events[index]
-    if (event?.type !== 'user/message') continue
-    const kind = event.data?.source?.kind
-    if (typeof kind === 'string' && INJECTED_SOURCES.has(kind)) continue
-    lastUser = index
-  }
-  if (lastUser < 0) return { sawUser: false, answeredAfterWrite: false, userText: '' }
-  const asked = new Set()
-  let lastAnswer = -1
-  let lastWrite = -1
-  for (let index = lastUser + 1; index < events.length; index += 1) {
-    const event = events[index]
-    const data = event?.data
-    if (event?.type === 'tool/call') {
-      if (data?.name === 'ask_user_question') asked.add(data.callId)
-      else if (data?.name === 'write' || data?.name === 'edit') {
-        const raw = data.arguments !== null && typeof data.arguments === 'object' && typeof data.arguments.file_path === 'string'
-          ? data.arguments.file_path
-          : undefined
-        if (raw !== undefined && isInside(resolve(cwd, raw), root)) lastWrite = index
-      }
-    } else if (event?.type === 'tool/result') {
-      const callId = typeof data?.message?.source?.callId === 'string' ? data.message.source.callId : data?.callId
-      if (typeof callId === 'string' && asked.has(callId)) lastAnswer = index
-    }
-  }
-  return { sawUser: true, answeredAfterWrite: lastAnswer > lastWrite, userText: userTextOf(events[lastUser]) }
-}
-
-/**
- * Refuse to create a discussion document before the user has answered.
- * @returns a denial reason, or undefined when the write may proceed.
- */
-function discussionFirstReason(target, cwd, root, agent) {
-  const rel = relative(root, target).split(/[\\/]/).join('/')
-  if (isLedgerPath(rel)) return undefined
-  const events = agent?.session?.events
-  if (!Array.isArray(events)) return undefined
-  const turn = turnState(events, cwd, root)
-  if (!turn.sawUser) return undefined
-  if (turn.answeredAfterWrite) return undefined
-  if (WRITE_CUES.test(turn.userText)) return undefined
-  return `先讨论，再落盘：${rel} 是本轮要新建的文件，但本轮还没有拿到你的答复。\n`
-    + '把提案、选项、推演链、代价、反例完整说在对话里，用 ask_user_question 提问；拿到答复之后再写文件留痕。\n'
-    + '（文件是讨论的留痕，不是讨论的介质。用户明确要求记录、或用户在指出错误/给出修正时，这条限制自动放行。）'
-}
-
-/** Invariants that keep `stage` and `verdict` owned by the gate tool. */
-function stateInvariant(toolName, args, root) {
-  if (toolName === 'edit') {
-    return 'state.json 只接受整文件 write（便于门禁校验），且 stage / verdict 只能由 apical_gate 改动。'
-  }
-  const content = args !== null && typeof args === 'object' && typeof args.content === 'string' ? args.content : undefined
-  if (content === undefined) return 'state.json 必须用 write 整文件写入。'
-  let next
+function userWordsInvariant(toolName, args, target) {
+  if (!existsSync(target)) return undefined
+  let before
   try {
-    next = JSON.parse(content)
+    before = readFileSync(target, 'utf8')
   } catch {
-    return 'state.json 必须是合法 JSON（模板见 skill apical-bud 的 templates/state.json）。'
+    return undefined
   }
-  if (next === null || typeof next !== 'object' || Array.isArray(next)) return 'state.json 顶层必须是 JSON 对象。'
-  if (next.schema !== 1) return 'state.json 必须保留 schema: 1。'
-  const before = readState(root)
-  if (!before.ok) return undefined
-  const currentStage = before.state?.stage
-  if (typeof currentStage === 'string' && next.stage !== currentStage) {
-    return `stage 只能由 apical_gate 推进（当前 ${currentStage}，你写的是 ${String(next.stage)}）：先 action=check 通过，再 action=advance。`
-  }
-  const currentVerdict = before.state?.verdict?.status
-  if (typeof currentVerdict === 'string' && next.verdict?.status !== currentVerdict) {
-    return `verdict 只能由 apical_gate action=verdict 记录（当前 ${currentVerdict}）。裁决要留理由与证据，不能改字段了事。`
-  }
-  return undefined
+  const after = resultingText(toolName, args, before)
+  if (after === undefined) return undefined
+  const previous = sectionOf(before, USER_WORDS)
+  if (!hasContent(previous)) return undefined
+  const next = sectionOf(after, USER_WORDS)
+  const trim = (text) => String(text ?? '').replace(/\s+$/, '')
+  if (next !== undefined && trim(next).startsWith(trim(previous))) return undefined
+  return `seed.md 的「## ${USER_WORDS}」是讨论史，只能追加、不能改写（要改的是你以为用户说了什么，不是用户说过什么）。\n`
+    + '如果原话本身记错了：追加一条更正并写明"更正："，不要动已记下的行；\n'
+    + '如果是这一轮的新话：追加进「## 用户原话」；\n'
+    + '如果是想修"一句话需求"「核心问题」「被否的表述」这些小节，直接改它们——那些是推演的结论，不是历史。'
 }
 
-/** Two-line state banner, or '' when there is nothing worth saying. */
-/** Human label for a tree's lifecycle state. */
-const STATUS_LABEL = { open: '进行中', done: '已完成', stopped: '已终止' }
+/** Denial text for a write that does not land inside a discussion root. */
+function outsideMessage(base, baseDir, target, cwd, allowPaths) {
+  const scope = `${relPath(cwd, baseDir)}/<slug>/`
+  const note = relPath(cwd, baseDir) === base
+    ? 'base 与 allowPaths 可在 apical-guard 行里改'
+    : `${base}/<slug>/；base 与 allowPaths 可在 apical-guard 行里改`
+  const extra = allowPaths.length > 0 ? `（allowPaths 里已放行 ${allowPaths.join('、')}）` : ''
+  const loose = isInside(target, baseDir)
+    ? `${relPath(cwd, baseDir)}/ 顶层的散文件不属于任何讨论根——这套方法的记录都长在某一棵树里（种子、事实、推演点、模型、选型、交接件、术语、map.md）。\n`
+    : ''
+  return `本会话是「顶芽模式」：write/edit 只允许写讨论根 ${scope} 以内（${note}）${extra}，当前目标是 ${relPath(cwd, target)}。\n`
+    + loose
+    + '推演只写记录，不改仓库实现——要改实现请用「标准模式」新开一个会话。'
+    + `若确实需要在本会话写别处：由用户在宿主环境设 DSH_APICAL_UNLOCK=1，或在 apical-guard 行的 allowPaths 里放行该前缀。`
+}
 
-function bannerText(cwd, base, active, stateRead) {
-  if (active.kind === 'none') {
-    return `[apical-bud] 还没有讨论根：按 skill apical-bud 进入 S0（种子）—— 建 ${base}/<slug>/ 并写入 state.json（topic / slug 必填），再把用户原话存进 seed/R-000-original.md。`
-  }
-  if (active.kind === 'multi') {
-    const listed = active.roots.map((root) => {
-      const summary = treeSummary(root)
-      return `${summary.slug}(${STATUS_LABEL[summary.status] ?? summary.status} ${summary.stage})`
+/** Stable picture of every discussion root, so the banner only speaks on change. */
+function projectHash(cwd, base) {
+  const roots = listRoots(cwd, base)
+  if (roots.length === 0) return `none:${resolve(cwd, base)}`
+  return roots
+    .map((root) => {
+      const check = lastCheck(root)
+      const tail = check === undefined ? '' : `#${check.ok ? 'ok' : 'no'}:${check.blockers.join(',')}:${check.warnings.length}`
+      return `${pulseKey(root)}${tail}`
     })
-    return `[apical-bud] 项目里有 ${active.roots.length} 棵树，本会话尚未绑定：${listed.join(' · ')}\n`
-      + `[apical-bud] 先用 apical_gate action=bind slug=<slug> 绑定本会话要推进的那一棵（绑定后写入范围随之确定）；action=trees 可看全部树的状态`
+    .join('|')
+}
+
+/** One line: the core question, the derivation counters, the last check result. */
+function bannerText(cwd, base) {
+  const found = discoverRoot(cwd, base)
+  if (found.kind === 'none') {
+    return `[apical-bud] 还没有讨论根：照 templates/seed.md 建 ${base}/<slug>/seed.md（先写「## 用户原话」与「## 核心问题」）；`
+      + '开工先读 map.md，没有就跑 apical_check action=map。'
+      + `写守卫只放行 ${base}/<slug>/ 以内。`
   }
-  const root = active.root
-  const state = stateRead.ok ? stateRead.state : undefined
-  const stage = typeof state?.stage === 'string' ? state.stage : 'S0'
-  const round = Number.isInteger(state?.round) ? state.round : 0
-  const gate = state?.gates?.[stage]
-  const questions = openQuestions(root, stage)
-  const counts = treeCounts(root)
-  const verdict = typeof state?.verdict?.status === 'string' && state.verdict.status !== 'continue' ? ` · 裁决=${state.verdict.status}` : ''
-  const gateText = gate === undefined
-    ? '门禁: 未运行（有改动后先 apical_gate action=check）'
-    : gate.state === 'pass'
-      ? '门禁: 上次 check PASS（有改动需重跑）'
-      : `门禁: 上次 check FAIL（缺 ${Array.isArray(gate.missing) ? gate.missing.length : 0} 项）`
-  const questionText = questions.blocking === 0 ? '阻塞本阶段问题 0' : `阻塞本阶段问题 ${questions.blocking}（${questions.ids.join(', ')}）`
-  const mechanisms = counts.mechanisms > 0 ? ` · 机制 ${counts.mechanisms}` : ''
-  const tree = `层 ${counts.layers}(确认 ${counts.layersConfirmed}) · 节点 ${counts.nodes}(候选 ${counts.candidates}/定论 ${counts.nodes - counts.candidates} · 留 ${counts.kept}/汰 ${counts.dropped})${mechanisms} · 术语 ${counts.terms}(待确认 ${counts.pending})`
-  const siblings = listRoots(cwd, base)
-  const bound = active.kind === 'bound' ? '' : '（按唯一树推断，未显式绑定）'
-  const stale = active.missingBinding === undefined ? '' : ` · 原绑定 ${active.missingBinding} 已不存在`
-  const scope = siblings.length > 1
-    ? `写范围 ${relPath(cwd, root)}/${bound} · 本项目共 ${siblings.length} 棵树：${siblings.map((item) => basename(item)).join(', ')}（切换用 apical_gate action=bind）`
-    : `写范围 ${relPath(cwd, root)}/${bound}`
-  return `[apical-bud] 树 ${basename(root)} · 阶段 ${stage} · 第 ${round} 轮 · ${tree} · ${questionText} · ${gateText}${verdict}${stale}\n`
-    + `[apical-bud] ${scope} · 阶段推进 apical_gate(check→advance) · 对话先行：提案与选项先说在对话里（不看文件也能判断），拿到答复再落盘；答复前新建讨论文件会被守卫拦下`
+  const roots = found.kind === 'ambiguous' ? found.roots : [found.root]
+  const shown = roots.slice(0, 3)
+  const parts = shown.map((root) => {
+    const pulse = treePulse(root)
+    if (pulse.kind === 'legacy') return `${pulse.slug}（旧形状：不检查、不拦）`
+    const check = lastCheck(root)
+    const checkText = check === undefined
+      ? '体检: 未运行（apical_check action=check）'
+      : check.ok
+        ? `体检: 齐 ✓${check.warnings.length > 0 ? `（${check.warnings.length} 警告）` : ''}`
+        : `体检: 缺 ${check.blockers.length} 件（${check.blockers.slice(0, 2).join('、')}）`
+    const question = pulse.coreQuestion === '' ? '（seed.md 里还没写）' : pulse.coreQuestion
+    return `${pulse.slug} · 核心问题: ${question.length > 40 ? `${question.slice(0, 40)}…` : question}`
+      + ` · 推演点 ${pulse.points.total}（进行中 ${pulse.points.open}/已结 ${pulse.points.closed}/悬置 ${pulse.points.paused}）`
+      + ` · 事实 ${pulse.facts} · 顶芽 ${pulse.model} · 选型 ${pulse.build} · ${checkText}`
+  })
+  const head = found.kind === 'ambiguous' ? `[apical-bud] ${roots.length} 个讨论根` : '[apical-bud]'
+  const more = roots.length > shown.length ? ` …还有 ${roots.length - shown.length} 个（apical_check action=trees）` : ''
+  return `${head} ${parts.join(' ｜ ')}${more} · 写范围 ${base}/<slug>/（推演不实现）`
 }
