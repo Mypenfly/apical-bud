@@ -450,6 +450,9 @@ export function check(root, options = {}) {
   if (buildGaps.length > 0) add('build.gaps', false, buildGaps.join('；'), 'warn')
 
   const mapFile = join(dir, 'map.md')
+  if (!existsSync(mapFile) && points.length > 0) {
+    add('map.missing', false, '还没有 map.md：跑一次 apical_check action=map——新会话靠它一眼接上进度', 'warn')
+  }
   if (existsSync(mapFile)) {
     const sources = ['seed.md', 'facts.md', 'glossary.md', 'model.md', 'handoff.md']
       .map((name) => join(dir, name))
