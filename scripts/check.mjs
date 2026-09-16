@@ -266,7 +266,7 @@ export function check(root, options = {}) {
       if (!hasContent(doc.sections.get(name))) shapeProblems.push(`${where} 缺「## ${name}」的内容`)
     }
   }
-  add('point.shape', points.length > 0 && shapeProblems.length === 0, shapeProblems.join('；'))
+  if (points.length > 0) add('point.shape', shapeProblems.length === 0, shapeProblems.join('；'))
 
   if (model) {
     add('model.shape', hasContent(model.data.name) && hasContent(model.sections.get('一句话')), 'model.md 缺 name: 或「## 一句话」：概念模型还没有成形（可以先不建这个文件）')
