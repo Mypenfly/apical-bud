@@ -278,7 +278,7 @@ export function check(root, options = {}) {
   if (optionsDoc) {
     const os = headingIds(optionsDoc.sections, HEAD_OPTION)
     const hasMinimal = [...optionsDoc.sections.keys()].some((title) => MINIMAL_OPTION.test(title))
-    add('build.options', os.length >= 2 && hasMinimal, `build/02-方案.md 需要 ≥2 个「## O-0N」候选（现在 ${os.length} 个）和一个""什么都不做 / 最小方案""对照项`)
+    add('build.options', os.length >= 2 && hasMinimal, `build/02-方案.md 需要 ≥2 个「## O-0N」候选（现在 ${os.length} 个），外加一个「什么都不做 / 最小方案」对照项`)
   }
   if (selection) {
     const missing = SELECTION_SECTIONS.filter((name) => !selection.sections.has(name))
@@ -398,17 +398,22 @@ export function check(root, options = {}) {
   }
 
   const claimedWords = []
-  for (const row of bullets(seed?.sections.get('拆词与认领') ?? '')) {
-    const cells = row.split('|').map((cell) => cell.trim()).filter(Boolean)
+  const claimSection = seed?.sections.get('拆词与认领') ?? ''
+  const claimRows = tableRows(claimSection)
+  for (const line of bullets(claimSection)) {
+    const cells = line.split('|').map((cell) => cell.trim()).filter(Boolean)
+    if (cells.length >= 1) claimRows.push(cells)
+  }
+  for (const cells of claimRows) {
     if (cells.length < 2) continue
     if (!/核心/.test(cells[cells.length - 1])) continue
     const word = cells[0].replace(/\*\*/g, '').trim()
     if (word.length >= 2) claimedWords.push(word)
   }
   const chainText = [...points.map((point) => point.doc?.raw ?? ''), model?.raw ?? ''].join('\n')
-  const landed = claimedWords.filter((word) => chainText.includes(word))
-  if (claimedWords.length > 0 && landed.length === 0) {
-    add('logic.landing', false, `种子里认领为"核心"的词在推演里一个都没出现：${claimedWords.join('、')}——推演可能跑到了别处`, 'warn')
+  const notLanded = claimedWords.filter((word) => !chainText.includes(word))
+  if (notLanded.length > 0) {
+    add('logic.landing', false, `种子里认领为"核心"的词在推演里没出现：${notLanded.join('、')}——推演可能跑到了别处`, 'warn')
   }
 
   if (model) {
@@ -428,7 +433,8 @@ export function check(root, options = {}) {
     }
     const buildTouched = Boolean(criteria || optionsDoc || selection || handoff)
     if (buildTouched && String(model.data.status ?? '') !== 'settled') {
-      add('build.premature', false, `model.md 还是 ${model.data.status || '（没有 status）'}，选型已经动笔了：先把顶芽定下来，否则判据会被方案带偏`, 'warn')
+      const modelStatus = String(model.data.status ?? '').trim()
+      add('build.premature', false, `model.md 的 status 是「${modelStatus === '' ? '空' : modelStatus}」，还没到 settled 就动笔选型了：先把顶芽定下来，否则判据会被方案带偏`, 'warn')
     }
   }
 
@@ -602,6 +608,21 @@ function lineWith(text, id, limit = 96) {
     return clean.length > limit ? `${clean.slice(0, limit - 1)}…` : clean
   }
   return ''
+}
+
+/** markdown 表格的数据行（跳过表头分隔行），每行一个单元格数组。 */
+function tableRows(text) {
+  return String(text ?? '')
+    .split(/\r?\n/)
+    .filter((line) => /^\s*\|/.test(line))
+    .map((line) =>
+      line
+        .replace(/^\s*\|/, '')
+        .replace(/\|\s*$/, '')
+        .split('|')
+        .map((cell) => cell.trim()),
+    )
+    .filter((cells) => cells.length >= 2 && !cells.every((cell) => /^:?-{2,}:?$/.test(cell) || cell === ''))
 }
 
 /** `[D-01.1, F-002]` → `['D-01.1', 'F-002']`。 */
