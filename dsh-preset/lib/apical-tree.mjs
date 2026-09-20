@@ -190,23 +190,77 @@ export function countFacts(root) {
 }
 
 /**
- * 需求线的推进情况：种子里拆出几条线，其中几条已经有推演点认领。
- * 一条线一个点都没有，是最该在横幅上看见的事——树偏了它最先知道。
+ * 需求线的推进情况：种子里拆出几条线、哪一条是核心、几条已经有推演节点认领。
+ * 一条线一个节点都没有，是最该在横幅上看见的事——树偏了它最先知道。
+ * 这一版核心恰好一条（其余是检验条件／非目标），横幅要先把核心点出来。
  */
 export function demandLinePulse(root) {
   const dir = resolve(root)
   const section = sectionOf(readText(join(dir, 'seed.md')), '需求线') ?? ''
   const declared = []
+  const conditions = []
+  let core = ''
   for (const line of section.split(/\r?\n/)) {
-    const id = /\bR-\d{2}\b/.exec(line.split('|')[1] ?? '')?.[0] ?? /\bR-\d{2}\b/.exec(line)?.[0]
-    if (id && !declared.includes(id)) declared.push(id)
+    if (!/^\s*\|/.test(line)) continue
+    const cells = line
+      .replace(/^\s*\|/, '')
+      .replace(/\|\s*$/, '')
+      .split('|')
+      .map((cell) => cell.replace(/\*\*/g, '').trim())
+    const id = /\bR-\d{2}\b/.exec(cells[0] ?? '')?.[0]
+    if (!id || declared.includes(id)) continue
+    const role = cells[3] ?? ''
+    if (/^(编号|ID)$/.test(role)) continue
+    declared.push(id)
+    if (/核心/.test(role)) {
+      if (core === '') core = id
+      else conditions.push(id)
+    } else if (/非目标|挂起|不算|不做/.test(role)) {
+      // 非目标不进推演主线，也不计入检验条件。
+    } else if (core === '' && role === '') {
+      core = id
+    } else {
+      conditions.push(id)
+    }
   }
   const owned = new Set()
   for (const point of readPoints(root)) {
     const id = /\bR-\d{2}\b/.exec(String(frontmatter(readText(join(dir, 'derivation', point.name))).line ?? ''))?.[0]
     if (id) owned.add(id)
   }
-  return { declared: declared.length, idle: declared.filter((id) => !owned.has(id)) }
+  return {
+    declared: declared.length,
+    idle: declared.filter((id) => !owned.has(id)),
+    core,
+    conditions,
+    conditionsIdle: conditions.filter((id) => !owned.has(id)),
+  }
+}
+
+/** 未定项合计：节点可以无限长，未定项不能一直涨。 */
+export function unresolvedPulse(root) {
+  const points = readPoints(root)
+  let total = 0
+  let rising = false
+  let previous = 0
+  points.forEach((point, index) => {
+    const raw = readText(join(resolve(root), 'derivation', point.name))
+    const data = frontmatter(raw)
+    const declared = String(data.undecided ?? '').trim()
+    let value
+    if (declared === '') {
+      const section = sectionOf(raw, '未定项') ?? ''
+      const items = section.split(/\r?\n/).filter((line) => /^\s*[-*]/.test(line))
+      value = items.length
+    } else {
+      const parsed = Number(declared)
+      value = Number.isFinite(parsed) ? parsed : 0
+    }
+    total += value
+    if (index > 0 && value > previous) rising = true
+    previous = value
+  })
+  return { total, rising, points: points.length }
 }
 
 /** The apical concept model's name and status, or undefined when there is none. */
@@ -224,13 +278,15 @@ export function readModel(root) {
   }
 }
 
-/** Which of the selection documents exist: `判据·方案·选型·交接`, or `未开始`. */
+/** Which of the selection documents exist: `判据·方案·实验·选型·交接`, or `未开始`. */
 export function buildStage(root) {
   const dir = resolve(root)
+  const selection = ['build/04-选型.md', 'build/03-选型.md'].find((file) => existsSync(join(dir, file)))
   const there = [
     ['build/01-判据.md', '判据'],
     ['build/02-方案.md', '方案'],
-    ['build/03-选型.md', '选型'],
+    ['build/03-实验.md', '实验'],
+    [selection ?? 'build/04-选型.md', '选型'],
     ['handoff.md', '交接'],
   ]
     .filter(([file]) => existsSync(join(dir, file)))
@@ -253,6 +309,7 @@ export function treePulse(root) {
     points: pointCounts(dir),
     facts: countFacts(dir),
     demand: demandLinePulse(dir),
+    unresolved: unresolvedPulse(dir),
     model: model === undefined
       ? '未成形'
       : `${model.status}${model.name === '' ? '' : `「${model.name}」`}`,

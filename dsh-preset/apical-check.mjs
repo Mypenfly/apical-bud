@@ -253,7 +253,7 @@ export function apply(ctx, config) {
               : check.ok
                 ? `上次体检: 齐（${check.warnings.length} 警告）`
                 : `上次体检: 缺 ${check.blockers.length} 件（${check.blockers.slice(0, 3).join('、')}）`
-            return `- [新形状] ${base}/${item.slug}/ · 推演点 ${pulse.points.total}`
+            return `- [新形状] ${base}/${item.slug}/ · 推演节点 ${pulse.points.total}`
               + `（进行中 ${pulse.points.open}/已结 ${pulse.points.closed}/悬置 ${pulse.points.paused}）`
               + ` · 事实 ${pulse.facts} · 顶芽 ${pulse.model} · 选型 ${pulse.build} · ${checkText}`
           })

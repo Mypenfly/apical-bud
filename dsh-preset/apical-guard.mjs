@@ -9,15 +9,18 @@
  *    extra prefixes. "Discussion does not implement" used to be one of several
  *    guard duties; with the light method it is the whole point — everything else
  *    about the tree is a record convention, checked by `scripts/check.mjs`, not
- *    enforced here.
+ *    enforced here. `design/<slug>/probe/` needs no extra whitelisting: a probe
+ *    file lives inside the tree, and the session only WRITES it — running it is
+ *    the user's job in a standard-mode session.
  * 2. APPEND-ONLY USER WORDS: `seed.md`'s `## 用户原话` section may only grow.
  *    Rewriting it would silently rewrite what the user actually said, so a
  *    `write` or `edit` that changes or drops any of those lines is denied. The
- *    rest of `seed.md` (一句话需求 / 核心问题 / 被否的表述 …) stays editable:
- *    those are the discussion's conclusions, not its history.
+ *    rest of `seed.md` (一句话需求 / 核心与放弃代价 / 核心问题 / 被否的表述 …)
+ *    stays editable: those are the discussion's conclusions, not its history.
  * 3. STATE BANNER: one short injected line per user turn (and whenever the tree
- *    changes) with the core question, the derivation-point counts, the fact
- *    count, the model and selection status, and the last `apical_check` result.
+ *    changes) with the core question, which requirement line is the core, the
+ *    condition count, the derivation-node counts, undecided count, facts, the
+ *    model and selection status, and the last `apical_check` result.
  *    A long discussion compacts; state the model has to remember is state it
  *    will eventually get wrong, so it is read off the files each turn.
  *
@@ -221,7 +224,7 @@ function outsideMessage(base, baseDir, target, cwd, allowPaths) {
     : `${base}/<slug>/；base 与 allowPaths 可在 apical-guard 行里改`
   const extra = allowPaths.length > 0 ? `（allowPaths 里已放行 ${allowPaths.join('、')}）` : ''
   const loose = isInside(target, baseDir)
-    ? `${relPath(cwd, baseDir)}/ 顶层的散文件不属于任何讨论根——这套方法的记录都长在某一棵树里（种子、事实、推演点、模型、选型、交接件、术语、map.md）。\n`
+    ? `${relPath(cwd, baseDir)}/ 顶层的散文件不属于任何讨论根——这套方法的记录都长在某一棵树里（种子、事实、推演节点、模型、实验件、选型、交接件、术语、map.md）。\n`
     : ''
   return `本会话是「顶芽模式」：write/edit 只允许写讨论根 ${scope} 以内（${note}）${extra}，当前目标是 ${relPath(cwd, target)}。\n`
     + loose
@@ -263,11 +266,16 @@ function bannerText(cwd, base) {
         : `体检: 缺 ${check.blockers.length} 件（${check.blockers.slice(0, 2).join('、')}）`
     const question = pulse.coreQuestion === '' ? '（seed.md 里还没写）' : pulse.coreQuestion
     const demand = pulse.demand && pulse.demand.declared > 0
-      ? ` · 需求线 ${pulse.demand.declared}${pulse.demand.idle.length > 0 ? `（${pulse.demand.idle.join('、')} 未动）` : '（都有人推）'}`
+      ? ` · 核心 ${pulse.demand.core === '' ? '（还没选）' : pulse.demand.core}`
+        + `（检验条件 ${pulse.demand.conditions.length}${pulse.demand.conditionsIdle.length > 0 ? `，${pulse.demand.conditionsIdle.join('、')} 没人验` : ''}）`
+        + ` · 需求线 ${pulse.demand.declared}${pulse.demand.idle.length > 0 ? `（${pulse.demand.idle.join('、')} 未动）` : '（都有人推）'}`
+      : ''
+    const unresolved = pulse.unresolved && pulse.unresolved.points > 0
+      ? ` · 未定项 ${pulse.unresolved.total}${pulse.unresolved.rising ? '（在涨）' : ''}`
       : ''
     return `${pulse.slug} · 核心问题: ${question.length > 40 ? `${question.slice(0, 40)}…` : question}`
-      + ` · 推演点 ${pulse.points.total}（进行中 ${pulse.points.open}/已结 ${pulse.points.closed}/悬置 ${pulse.points.paused}）`
-      + ` · 事实 ${pulse.facts}${demand} · 顶芽 ${pulse.model} · 选型 ${pulse.build} · ${checkText}`
+      + ` · 推演节点 ${pulse.points.total}（进行中 ${pulse.points.open}/已结 ${pulse.points.closed}/悬置 ${pulse.points.paused}）`
+      + ` · 事实 ${pulse.facts}${demand}${unresolved} · 顶芽 ${pulse.model} · 选型 ${pulse.build} · ${checkText}`
   })
   const head = found.kind === 'ambiguous' ? `[apical-bud] ${roots.length} 个讨论根` : '[apical-bud]'
   const more = roots.length > shown.length ? ` …还有 ${roots.length - shown.length} 个（apical_check action=trees）` : ''
