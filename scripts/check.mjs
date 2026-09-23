@@ -1001,7 +1001,7 @@ export function buildMap(root) {
 
   const openCount = points.reduce((sum, point) => sum + undecidedCount(point.doc), 0)
   lines.push('## 未定项')
-  lines.push(`- 未定项合计 ${openCount} 项${openCount === 0 ? '（已清零）' : '——只增不减就是没在收敛，见 loop.md 的偏离形状四'}`)
+  lines.push(`- 未定项合计 ${openCount} 项${openCount === 0 ? '（已清零）' : '——只增不减就是没在收敛，见 references/writing.md 的偏离形状'}`)
   for (const point of points) {
     const items = bullets(String(point.doc?.sections?.get('未定项') ?? '')).filter((line) => !/^(无|暂无)/.test(line.trim()))
     if (items.length === 0) continue

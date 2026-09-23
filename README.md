@@ -130,8 +130,7 @@ references/                    附录，按需读（SKILL.md 顶部有索引）
   node.md                      一个节点怎么写：frontmatter、九节、骨架、来路
   check.md                     文件清单、开工次序、顶芽与选型成形、体检查什么
   terminology.md               用语、措辞对照表、怎么提问
-  writing.md                   推演的写法：一个完整正例、六种不该出现的形状
-  loop.md                      收敛怎么判、五个偏离的形状
+  writing.md                   推演的写法：一个完整正例、收敛怎么判、九个偏离的形状、常见病症
 templates/                     10 份模板（seed / facts / point / model / criteria / options / probe / selection / handoff / glossary）
 scripts/check.mjs              零依赖体检器：组成成分 + 警告 + map.md 生成（模块 + CLI）
 dsh-preset/                    DSH 会话装配层：persona、apical_check 工具、写守卫、横幅、install.sh、自检

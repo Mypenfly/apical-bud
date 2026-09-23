@@ -27,8 +27,7 @@ seed.md ──► facts.md ──► derivation/ ──► model.md ──► bu
 | 写一个节点（frontmatter、九节、骨架、来路） | [`references/node.md`](references/node.md) |
 | 文件清单、开工次序、顶芽与选型成形、体检 | [`references/check.md`](references/check.md) |
 | 用语、措辞对照、怎么提问 | [`references/terminology.md`](references/terminology.md) |
-| 一个完整正例、不该出现的形状、常见病症 | [`references/writing.md`](references/writing.md) |
-| 收敛怎么判、偏掉长什么样 | [`references/loop.md`](references/loop.md) |
+| 一个完整正例、收敛怎么判、九个偏离的形状、常见病症 | [`references/writing.md`](references/writing.md) |
 
 ## 对话是介质，文件是留痕（最高优先）
 
@@ -73,7 +72,7 @@ seed.md ──► facts.md ──► derivation/ ──► model.md ──► bu
 - 推不动、反例无法界定、或必须引入第二套机制才覆盖得全：**明说未收敛**。
 - **另一种停是需求不可行**，这是合法且省钱的结局。**禁止为留住这棵树而软化结论。**
 
-详见 [`loop.md`](references/loop.md)。
+详见 [`writing.md`](references/writing.md)（收敛怎么判、九个偏离的形状）。
 
 ## 来路：两种"由前面得出"分开写
 

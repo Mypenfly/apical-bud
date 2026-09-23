@@ -132,8 +132,7 @@ references/                    appendices, read on demand (indexed at the top of
   node.md                      how to write one node: frontmatter, nine sections, skeleton
   check.md                     file inventory, start order, model/selection shape, what the check checks
   terminology.md               wording, the wording table, how to ask
-  writing.md                   one full example, six shapes to avoid
-  loop.md                      the convergence test, five shapes of drift
+  writing.md                   how to write: one full example, the convergence test, nine shapes of drift, common symptoms
 templates/                     10 templates (seed / facts / point / model / criteria / options / probe / selection / handoff / glossary)
 scripts/check.mjs              zero-dependency check: composition + warnings + map.md (module and CLI)
 dsh-preset/                    DSH session assembly: persona, apical_check tool, write guard, banner, install.sh, selftest
