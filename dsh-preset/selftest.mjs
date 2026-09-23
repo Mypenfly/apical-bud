@@ -795,6 +795,29 @@ async function main() {
     risingReport.warnings.map((item) => item.id).join(','),
   )
 
+  // 记录的时差：两处条数不符、map.md 停在上一轮 —— 这两条是「进度会丢」的源头，但都只是警告。
+  const recordRoot = join(sandbox, 'record-drift')
+  mkdirSync(join(recordRoot, 'derivation'), { recursive: true })
+  const driftPoint = `${POINT_1}\n## 未定项\n\n- 命中率的分母还没定；由推演节点 02 回答。\n`
+  writeFileSync(join(recordRoot, 'seed.md'), SEED, 'utf8')
+  writeFileSync(join(recordRoot, 'facts.md'), FACTS, 'utf8')
+  writeFileSync(join(recordRoot, 'glossary.md'), GLOSSARY, 'utf8')
+  writeFileSync(join(recordRoot, 'derivation', '01-成本组成.md'), driftPoint, 'utf8')
+  const driftAligned = checkModule.check(recordRoot)
+  ok('两处一致时不报 undecided.drift', driftAligned.warnings.every((item) => item.id !== 'undecided.drift'), driftAligned.warnings.map((item) => item.id).join(','))
+  writeFileSync(join(recordRoot, 'derivation', '01-成本组成.md'), driftPoint.replace('undecided: 1', 'undecided: 3'), 'utf8')
+  const recordReport = checkModule.check(recordRoot)
+  ok('警告：undecided 与「## 未定项」条数不符', recordReport.warnings.some((item) => item.id === 'undecided.drift'), recordReport.warnings.map((item) => item.id).join(','))
+  ok('两处不符只是警告、不硬拦', recordReport.blockers.every((item) => item.id !== 'undecided.drift'))
+
+  const staleMapRoot = join(sandbox, 'map-drift')
+  writeGoodTree(staleMapRoot)
+  const freshMap = checkModule.buildMap(staleMapRoot)
+  ok('map 带「下一步」一行（压缩之后先接的就是它）', freshMap.includes('**下一步**：'), freshMap.split('\n').find((line) => line.startsWith('**下一步**')) ?? '')
+  writeFileSync(join(staleMapRoot, 'map.md'), freshMap.replace('**现在停在**：', '**现在停在**：上一轮的事——'), 'utf8')
+  const staleReport = checkModule.check(staleMapRoot)
+  ok('警告：map.md 停在上一轮（内容级比对，mtime 测不出来）', staleReport.warnings.some((item) => item.id === 'map.drift'), staleReport.warnings.map((item) => item.id).join(','))
+
   // 实验件：有文件但没有杀判据 → 只是演示，报缺件。
   const probeRoot = join(sandbox, 'probe-bad')
   mkdirSync(join(probeRoot, 'derivation'), { recursive: true })

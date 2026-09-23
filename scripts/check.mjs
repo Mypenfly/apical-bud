@@ -291,6 +291,15 @@ export function undecidedCount(doc) {
   return text === '无' ? 0 : text === '' ? 0 : 1
 }
 
+/** 只数「## 未定项」正文里的条目（不看 frontmatter）——用来查这两处对不对得上。 */
+export function undecidedSectionCount(doc) {
+  const raw = String(doc?.sections?.get('未定项') ?? '').trim()
+  if (raw === '' || /^无[。.]?$|^（?无）?$|^暂无/.test(raw)) return 0
+  const items = bullets(raw).filter((line) => !/^(无|暂无)/.test(line.trim()))
+  if (items.length > 0) return items.length
+  return raw.replace(/\*\*/g, '').trim() === '' ? 0 : 1
+}
+
 /** 节点自己定义的编号（`D-05.5` 只算推演节点 05 的），去重；避免把交叉引用当成自己的结论。 */
 function ownIds(doc, section, pattern, order) {
   if (!order) return []
@@ -749,13 +758,27 @@ export function check(root, options = {}) {
   if (rising.length > 0) {
     add('undecided.rising', false, `${rising.map((item) => `推演节点 ${item.from}–${item.to} 连着 ${item.count} 个未定项只增不减（${item.fromValue} → ${item.toValue}）`).join('；')}——节点在长、未定项也在长，这不是收敛是铺摊子：停下来把一个未定项真正关掉（哪怕结论是"这条走不通"），或者明说这棵树卡在哪一条上`, 'warn')
   }
+  const undecidedDrift = []
+  for (const point of points) {
+    const doc = point.doc
+    if (!doc) continue
+    if (String(doc.data.undecided ?? '').trim() === '') continue
+    if (!doc.sections.has('未定项')) continue
+    const declaredValue = undecidedCount(doc)
+    const sectionValue = undecidedSectionCount(doc)
+    if (declaredValue !== sectionValue) {
+      undecidedDrift.push(`${point.order || point.name}（frontmatter ${declaredValue}，正文 ${sectionValue}）`)
+    }
+  }
+  if (undecidedDrift.length > 0) {
+    add('undecided.drift', false, `这些推演节点的 undecided: 与「## 未定项」条数对不上：${brief(undecidedDrift)}——两处同时改；只改一处，map.md 里那个进度数字就是错的`, 'warn')
+  }
   if (declaredUndecided.length > 0 && [...undecidedAt.values()].every((value) => value === 0)) {
     const settled = String(model?.data?.status ?? '').trim() === 'settled'
     if (!settled && points.every((point) => String(point.doc?.data.status) !== 'open')) {
       add('undecided.clear', false, '未定项已经清零、也没有进行中的节点了：概念自洽且可实现就可以写 model.md 的 settled，然后动 build/', 'warn')
     }
   }
-
   if (lineIds.length > 0 && points.length >= 3) {
     const owned = new Map(lineIds.map((id) => [id, []]))
     for (const point of points) {
@@ -870,6 +893,16 @@ export function check(root, options = {}) {
     add('map.missing', false, '还没有 map.md：跑一次 apical_check action=map——新会话靠它一眼接上进度', 'warn')
   }
   if (existsSync(mapFile)) {
+    const mapText = readFileSync(mapFile, 'utf8')
+    // 内容级比对：mtime 会被 checkout、复制、编辑器保存重置，而"map.md 停在哪一轮"才是接续要紧的。
+    const freshMap = buildMap(root)
+    const pick = (text, prefix) => text.split('\n').find((line) => line.startsWith(prefix)) ?? ''
+    const drifted = [['**现在停在**：', '现在停在'], ['**下一步**：', '下一步']]
+      .filter(([prefix]) => pick(mapText, prefix) !== pick(freshMap, prefix))
+      .map(([, label]) => label)
+    if (drifted.length > 0) {
+      add('map.drift', false, `map.md 里的「${drifted.join('」「')}」与文件现在写着的对不上：跑一次 apical_check action=map——新会话只读 map.md，错的那一行会把进度接错`, 'warn')
+    }
     const sources = ['seed.md', 'facts.md', 'glossary.md', 'model.md', 'handoff.md']
       .map((name) => join(dir, name))
       .concat(points.map((point) => join(dir, 'derivation', point.name)))
@@ -964,6 +997,25 @@ export function buildMap(root) {
   } else {
     lines.push('**现在停在**：还没有推演节点')
   }
+  lines.push('')
+
+  // 下一步：把进度变成一句可执行的话——上下文被压缩之后，先接的就是这一行。
+  const nextStep = (() => {
+    if (points.length === 0) return '照 `templates/seed.md` 起种子：一句话需求 → 需求线 → 核心与放弃代价 → 核心问题。'
+    if (current) {
+      const raised = raiseLines(current.doc, current.order)
+      if (raised.length > 0) return `先答推演节点 ${current.order} 生出的下一个问题：${oneLine(raised[0].text)}`
+      const items = bullets(String(current.doc?.sections?.get('未定项') ?? '')).filter((line) => !/^(无|暂无)/.test(line.trim()))
+      if (items.length > 0) return `先把推演节点 ${current.order} 认领的未定项关掉：${oneLine(items[0])}`
+      return `推演节点 ${current.order} 的未定项已经清空：开下一个节点，或写 model.md 的 settled。`
+    }
+    const paused = points.filter((point) => String(point.doc?.data.status) === 'paused')
+    if (paused.length > 0) return `悬置的推演节点 ${paused.map((point) => point.order).join('、')} 等的是外部事实：去查它，或者写明"现在拿不到"。`
+    const left = points.reduce((sum, point) => sum + undecidedCount(point.doc), 0)
+    if (left === 0 && String(model?.data.status ?? '').trim() !== 'settled') return '未定项已经清零：写 model.md 的 `status: settled`，再进 build/ 立判据。'
+    return '没有进行中的节点：开一个新节点，或者回 seed.md 看是哪条需求线还没被推。'
+  })()
+  lines.push(`**下一步**：${nextStep}`)
   lines.push('')
 
   const demand = demandLines(seed)
