@@ -140,6 +140,7 @@ references/                    appendices, read on demand (indexed at the top of
 templates/                     10 templates (seed / facts / point / model / criteria / options / probe / selection / handoff / glossary)
 scripts/check.mjs              zero-dependency check: composition + warnings + map.md (module and CLI)
 dsh-preset/                    DSH session assembly: persona, apical_check tool, write guard, banner, install.sh, selftest
+README.md / README.en.md       Chinese / English
 ```
 
 ## Relationship to earlier versions
