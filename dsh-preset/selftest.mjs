@@ -23,7 +23,7 @@
  * removed on success; a sibling `.selftest/fixtures/` is left alone.
  */
 
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -865,6 +865,28 @@ async function main() {
   ok('失败时给出三条修法', reportC.text.includes('checkScript') && reportC.text.includes('APICAL_CHECK_SCRIPT') && reportC.text.includes('skills/apical-bud'), reportC.text.split('\n').slice(-1)[0].slice(0, 60))
   if (previousHome === undefined) delete process.env.DSH_HOME
   else process.env.DSH_HOME = previousHome
+
+  // ── 单一真相源：方法本体只在 skill 里，persona 不抄第二份 ────────────────────
+  process.stdout.write('\n[9] 单一真相源：附录都被索引，persona 只带常驻契约\n')
+  {
+    const skillMd = readFileSync(join(skillDir, 'SKILL.md'), 'utf8')
+    const personaRaw = readFileSync(join(here, 'agent.cordis.yml'), 'utf8')
+    const refFiles = readdirSync(join(skillDir, 'references')).filter((name) => name.endsWith('.md'))
+    ok('references/ 里有附录可查', refFiles.length > 0)
+    for (const name of refFiles) {
+      ok(`SKILL.md 的索引里有 references/${name}`, skillMd.includes(name), '新加了一份附录却没进 SKILL.md 顶部的索引')
+    }
+    for (const [label, text] of [['SKILL.md', skillMd], ['persona', personaRaw]]) {
+      const pointed = [...new Set([...text.matchAll(/references\/([A-Za-z0-9._-]+\.md)/g)].map((m) => m[1]))]
+      for (const name of pointed) {
+        ok(`${label} 指向的 references/${name} 真的存在`, refFiles.includes(name), '指针悬空：改过名或删过文件')
+      }
+    }
+    ok('persona 带「开工第一件事读 SKILL.md」', personaRaw.includes('开工第一件事'), 'persona 必须把模型推到方法本体那里')
+    const prefix = personaRaw.match(/prefix: \|-\n([\s\S]*?)\n# /)
+    const prefixBytes = prefix === null ? 0 : Buffer.byteLength(prefix[1], 'utf8')
+    ok('persona 正文在 7 KB 预算内', prefixBytes > 0 && prefixBytes <= 7168, prefixBytes === 0 ? '取不到 prefix 段' : `现在 ${prefixBytes} 字节——超了先删旧话，别再往上叠`)
+  }
 
   process.stdout.write(failures === 0 ? '\n全部通过 ✓\n' : `\n失败 ${failures} 项 ✗\n`)
   if (failures === 0) rmSync(sandbox, { recursive: true, force: true })
