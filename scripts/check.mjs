@@ -898,10 +898,14 @@ export function check(root, options = {}) {
     const freshMap = buildMap(root)
     const pick = (text, prefix) => text.split('\n').find((line) => line.startsWith(prefix)) ?? ''
     const drifted = [['**现在停在**：', '现在停在'], ['**下一步**：', '下一步']]
-      .filter(([prefix]) => pick(mapText, prefix) !== pick(freshMap, prefix))
+      .filter(([prefix]) => {
+        const was = pick(mapText, prefix)
+        // 旧 map.md 里根本没有这一行（比如早于「下一步」那一版）就不算漂移：旧形状读得懂、不报缺件。
+        return was !== '' && was !== pick(freshMap, prefix)
+      })
       .map(([, label]) => label)
     if (drifted.length > 0) {
-      add('map.drift', false, `map.md 里的「${drifted.join('」「')}」与文件现在写着的对不上：跑一次 apical_check action=map——新会话只读 map.md，错的那一行会把进度接错`, 'warn')
+      add('map.drift', false, `map.md 里的「${drifted.join('」「')}」与文件现在写着的对不上：跑一次 apical_check action=map——新会话只读 map.md，错的那一行会把进度接错（换过版本的 map.md 也会这样，重跑一次就对了）`, 'warn')
     }
     const sources = ['seed.md', 'facts.md', 'glossary.md', 'model.md', 'handoff.md']
       .map((name) => join(dir, name))
