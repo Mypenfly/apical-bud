@@ -1,6 +1,6 @@
 ---
 name: apical-bud
-description: "把一句需求推演成抽象概念模型的记录规范：种子（用户原话 → 一个核心 + 检验条件 + 放弃代价）→ 事实 → 推演节点（一点一文件，每个节点走「命名 → 组成 → 为什么 → 怎么落机制 → 生出新概念」，未定项必须被解决且不再增长）→ 顶芽（抽象概念模型）→ 技术选型（判据／方案／可选实验／选型，实验可推翻理念）→ 果实（交接件 + 可直接跑的实验文件与数据）；另有一份机器生成的 map.md，新会话读它就接上进度。只规定文件组织与用语。Concept-deduction methodology as a record convention: seed with one core requirement plus bounded conditions, node-by-node derivation that must converge, optional falsifying experiments, handoff plus runnable probe files."
+description: "把一句需求推演成抽象概念模型的记录规范：先只留一个核心，再按节点推演，未定项必须被解决且不再增长；实验可推翻理念。产物是 design/<slug>/ 的推演记录、交接件与能跑的实验文件。Concept-deduction record convention: one core requirement, node-by-node derivation that must converge, falsifiable experiments, handoff plus runnable probes."
 whenToUse: "用户想在想清楚做什么之前先讨论（我们聊聊这个想法 / 帮我理清需求 / 这个概念该怎么设计 / 这个方向值得做吗），或要评审一个尚未成形的产品、系统构想时。"
 ---
 
