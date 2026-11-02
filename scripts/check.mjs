@@ -279,7 +279,19 @@ export function seedRoles(lines) {
   }
 }
 
-/** 节点里「## 未定项」的条目数：写"无"算 0，其余按条数点。 */
+/**
+ * 节点里「## 未定项」的条目数：写"无"算 0，其余按条数点。
+ *
+ * ★ 2026-09-26 修一处长期误报：这一节常见的写法是「**活的 N 条**（说明…）」＋条目，
+ *   或「**0 项**（说明…）」，说明里还常带"第 1 条…"这样的行内引用。老版把这些说明
+ *   整段当成 1 条（无条目时），或者把说明里的数字当条数，于是 `undecided:` 明明对得上、
+ *   却报 drift。现在：先认"节首自报的条数"（活的 N 条／N 项），再退回条目数，最后才当 1。
+ */
+function declaredSectionCount(raw) {
+  const flat = raw.replace(/[\*`]/g, '').trim()
+  const m = /^活[的]?\s*(\d+)\s*条/.exec(flat) || /^(\d+)\s*项/.exec(flat) || /^(\d+)\s*条/.exec(flat)
+  return m ? Number(m[1]) : null
+}
 export function undecidedCount(doc) {
   const parsed = toNumber(doc?.data?.undecided)
   if (parsed !== null) return parsed
@@ -287,6 +299,8 @@ export function undecidedCount(doc) {
   if (raw === '' || /^无[。.]?$|^（?无）?$|^暂无/.test(raw)) return 0
   const items = bullets(raw).filter((line) => !/^(无|暂无)/.test(line.trim()))
   if (items.length > 0) return items.length
+  const declared = declaredSectionCount(raw)
+  if (declared !== null) return declared
   const text = raw.replace(/\*\*/g, '').trim()
   return text === '无' ? 0 : text === '' ? 0 : 1
 }
@@ -297,6 +311,8 @@ export function undecidedSectionCount(doc) {
   if (raw === '' || /^无[。.]?$|^（?无）?$|^暂无/.test(raw)) return 0
   const items = bullets(raw).filter((line) => !/^(无|暂无)/.test(line.trim()))
   if (items.length > 0) return items.length
+  const declared = declaredSectionCount(raw)
+  if (declared !== null) return declared
   return raw.replace(/\*\*/g, '').trim() === '' ? 0 : 1
 }
 
@@ -426,6 +442,13 @@ export function check(root, options = {}) {
 
   // ── 硬拦：组成成分 ────────────────────────────────────────────────────────
   const lines = demandLines(seed)
+  /** 标成「非目标」的需求线不要求有人推它——它本来就不该吃掉节点。 */
+  const isNonGoal = (id) => {
+    const seedLines = seed?.sections?.get('需求线') ?? ''
+    const row = seedLines.split(/\r?\n/).find((line) => line.includes(id)) ?? ''
+    return /非目标/.test(row)
+  }
+
   const lineIds = lines.map((item) => item.id)
   const roles = seedRoles(lines)
   const coreIds = roles.core.map((item) => item.id)
@@ -785,7 +808,7 @@ export function check(root, options = {}) {
       const id = /\bR-\d{2}\b/.exec(String(point.doc?.data.line ?? ''))?.[0]
       if (id && owned.has(id)) owned.get(id).push(point.order || point.name)
     }
-    const idle = lineIds.filter((id) => owned.get(id).length === 0)
+    const idle = lineIds.filter((id) => owned.get(id).length === 0 && !isNonGoal(id))
     const busy = lineIds.filter((id) => owned.get(id).length >= 3)
     if (idle.length > 0 && busy.length > 0) {
       add('line.idle', false, `偏了：${idle.map(lineLabel).join('、')} 一个推演节点都没有，而 ${busy.map((id) => `${lineLabel(id)} 已经吃掉 ${owned.get(id).length} 个`).join('、')}——每条需求线都要有人推`, 'warn')
@@ -976,8 +999,15 @@ export function buildMap(root) {
   const conclusionLine = (doc, id) => lineWith(doc?.sections.get('结论'), id)
   const ownQuestions = (doc, order) => ownIds(doc, '问题', FIND_QUESTION, order)
   const ownConclusions = (doc, order) => ownIds(doc, '结论', FIND_CONCLUSION, order)
+  /**
+   * 一个节点「生出的问题」里**还没答的**那些。
+   * ★ 2026-09-26 修：老版把已答的（行内 `~~` 划掉、或写着"已答／已用／已跑"）也算成"下一个问题"，
+   *   于是 map.md 的「下一步」反复指向一个早就答完的问题（本轮就出现过一次）。
+   */
   const raiseLines = (doc, order) =>
-    ownIds(doc, '生出的问题', FIND_QUESTION, order).map((id) => ({ id, text: lineWith(doc?.sections.get('生出的问题'), id) }))
+    ownIds(doc, '生出的问题', FIND_QUESTION, order)
+      .map((id) => ({ id, text: lineWith(doc?.sections.get('生出的问题'), id) }))
+      .filter((item) => !/~~|已答|已跑|已用|作废|见 F-/.test(item.text))
 
   const lines = []
   const seedHeading = /^#\s+(.+?)\s*$/m.exec(seed?.body ?? '')?.[1] ?? ''
