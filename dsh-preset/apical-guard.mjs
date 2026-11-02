@@ -1,55 +1,30 @@
 /**
- * apical-guard — the two mechanisms that keep the session inside a discussion,
- * plus the one line of state it should never have to remember.
+ * apical-guard — the write guard and the one-line state banner.
  *
- * 1. WRITE GUARD (the only hard rule left): a monotonic `ctx.tools.guard()`
- *    that permits `write`/`edit` inside a discussion root only — `design/<slug>/…`
- *    by default, so a loose `design/notes.md` belongs to no tree and is refused
- *    too. `config.base` moves the base directory and `allowPaths` whitelists
- *    extra prefixes. "Discussion does not implement" used to be one of several
- *    guard duties; with the light method it is the whole point — everything else
- *    about the tree is a record convention, checked by `scripts/check.mjs`, not
- *    enforced here. `design/<slug>/probe/` needs no extra whitelisting: a probe
- *    file lives inside the tree, and the session only WRITES it — running it is
- *    the user's job in a standard-mode session.
- * 2. APPEND-ONLY USER WORDS: `seed.md`'s `## 用户原话` section may only grow.
- *    Rewriting it would silently rewrite what the user actually said, so a
- *    `write` or `edit` that changes or drops any of those lines is denied. The
- *    rest of `seed.md` (一句话需求 / 核心与放弃代价 / 核心问题 / 被否的表述 …)
- *    stays editable: those are the discussion's conclusions, not its history.
- * 3. STATE BANNER: one short injected line per user turn (and whenever the tree
- *    changes) with the core question, which requirement line is the core, the
- *    condition count, the derivation-node counts, undecided count, facts, the
- *    model and selection status, and the last `apical_check` result.
- *    A long discussion compacts; state the model has to remember is state it
- *    will eventually get wrong, so it is read off the files each turn.
+ * Two mechanisms; both are anti-slip, not a security boundary.
  *
- * DELETED from the previous version, with the method: the "discussion-first"
- * guard (creating a new document before the user answered), the `state.json`
- * invariants, and the session→tree binding. Files are now the RECORD of a
- * derivation, not the medium of the discussion, so writing one is never by
- * itself a violation; a project with several roots is handled by naming the root
- * (`apical_check root=…`), not by binding a session to one.
+ * 1. WRITE GUARD. A monotonic `ctx.tools.guard()` allows `write`/`edit` inside
+ *    a discussion root only — `design/<slug>/…` by default, so a loose
+ *    `design/notes.md` belongs to no tree and is refused too. `config.base`
+ *    moves the base directory and `allowPaths` whitelists extra cwd-relative
+ *    prefixes. This is what keeps derivation from quietly turning into
+ *    implementation drift; an in-session implementation lifts it with
+ *    `DSH_APICAL_UNLOCK=1` (for the user, not for the model).
+ * 2. USER WORDS. `seed.md`'s `## 用户原话` may only grow. Rewriting it would
+ *    rewrite what the user actually said. The rest of `seed.md` stays editable:
+ *    those sections are the record's conclusions, not its history.
+ * 3. STATE BANNER. One short injected line per user turn (and whenever the two
+ *    anchor files change): the core question, where the tree stopped, how many
+ *    gaps are open, whether the three boundary answers are filled. A long
+ *    discussion compacts; state the model has to remember is state it will
+ *    eventually get wrong, so it is read off `seed.md` and `flow.md` each turn.
  *
- * Escape hatches, deliberately explicit: `DSH_APICAL_UNLOCK=1` in the host
- * environment disables the write guard entirely (for the user, not the model),
- * and `allowPaths` in the row's config whitelists extra prefixes.
+ * v2 deliberately carries no check engine and no generated `map.md`: the
+ * method's hard items are four and can be read by eye.
  */
 
-import { existsSync, readFileSync } from 'node:fs'
-import { relative, resolve } from 'node:path'
-import {
-  DEFAULT_BASE,
-  discoverRoot,
-  hasContent,
-  isInside,
-  lastCheck,
-  listRoots,
-  pulseKey,
-  relPath,
-  sectionOf,
-  treePulse,
-} from './lib/apical-tree.mjs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { basename, isAbsolute, join, relative, resolve } from 'node:path'
 
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'apical-guard'
@@ -62,6 +37,11 @@ const INJECTED_SOURCES = new Set(['apical-banner', 'instruction-hint', 'skill-in
 
 /** The section of `seed.md` that records what the user actually said. */
 const USER_WORDS = '用户原话'
+
+/** The three mandatory boundary answers in `seed.md`. */
+const BOUNDARIES = ['不做什么', '做不到什么', '只适配什么场景']
+
+const DEFAULT_BASE = 'design'
 
 /** Register the write guard and the per-turn state banner. */
 export function apply(ctx, config) {
@@ -84,7 +64,7 @@ export function apply(ctx, config) {
 
   if (!bannerEnabled) return
 
-  /** Per-session injection bookkeeping: turn cursor + last injected picture. */
+  /** Per-session injection bookkeeping: user-turn cursor, last injected picture. */
   const marks = new Map()
 
   ctx.on('agent/pre-step', async ({ agent, signal }, next) => {
@@ -136,11 +116,10 @@ export function apply(ctx, config) {
   })
 }
 
+// ── write guard ─────────────────────────────────────────────────────────────
+
 /**
  * Decide whether one tool call lands inside a discussion root.
- * @param execution - the identity-protected call from the tools pipeline.
- * @param base - base directory holding discussion roots.
- * @param allowPaths - extra cwd-relative prefixes the user whitelisted.
  * @returns a denial reason, or undefined to leave the call alone.
  */
 function guardReason(execution, base, allowPaths) {
@@ -160,16 +139,12 @@ function guardReason(execution, base, allowPaths) {
   const baseDir = resolve(cwd, base)
   const parts = relative(baseDir, target).split(/[\\/]/).filter((part) => part !== '')
 
-  // Everything this method records grows INSIDE a discussion root, so the whole
-  // `design/` area is not enough: `design/notes.md` belongs to no tree and would
-  // be the first gap in "the files are organized this way". Two levels minimum:
-  // `design/<slug>/…`. A root that does not exist yet is fine — `design/<slug>/seed.md`
-  // is exactly how a project gains its first (or next) tree.
+  // Two levels minimum: `design/<slug>/…`. A root that does not exist yet is
+  // fine — `design/<slug>/seed.md` is exactly how a project gains a tree.
   if (!isInside(target, baseDir) || parts.length < 2) {
     return outsideMessage(base, baseDir, target, cwd, allowPaths)
   }
 
-  // The only append-only document left: the verbatim words of the user.
   if (parts.length === 2 && parts[1] === 'seed.md') {
     const reason = userWordsInvariant(toolName, args, target)
     if (reason !== undefined) return reason
@@ -211,9 +186,9 @@ function userWordsInvariant(toolName, args, target) {
   const trim = (text) => String(text ?? '').replace(/\s+$/, '')
   if (next !== undefined && trim(next).startsWith(trim(previous))) return undefined
   return `seed.md 的「## ${USER_WORDS}」是讨论史，只能追加、不能改写（要改的是你以为用户说了什么，不是用户说过什么）。\n`
-    + '如果原话本身记错了：追加一条更正并写明"更正："，不要动已记下的行；\n'
+    + '如果原话本身记错了：追加一条更正并写明「更正：」，不要动已记下的行；\n'
     + '如果是这一轮的新话：追加进「## 用户原话」；\n'
-    + '如果是想修"一句话需求"「核心问题」「被否的表述」这些小节，直接改它们——那些是推演的结论，不是历史。'
+    + '如果是想修「核心问题」「主链」「边界」这些小节，直接改它们——那些是结论，不是历史。'
 }
 
 /** Denial text for a write that does not land inside a discussion root. */
@@ -224,60 +199,167 @@ function outsideMessage(base, baseDir, target, cwd, allowPaths) {
     : `${base}/<slug>/；base 与 allowPaths 可在 apical-guard 行里改`
   const extra = allowPaths.length > 0 ? `（allowPaths 里已放行 ${allowPaths.join('、')}）` : ''
   const loose = isInside(target, baseDir)
-    ? `${relPath(cwd, baseDir)}/ 顶层的散文件不属于任何讨论根——这套方法的记录都长在某一棵树里（种子、事实、推演节点、模型、实验件、选型、交接件、术语、map.md）。\n`
+    ? `${relPath(cwd, baseDir)}/ 顶层的散文件不属于任何讨论根——记录只长在某一棵树里。\n`
     : ''
   return `本会话是「顶芽模式」：write/edit 只允许写讨论根 ${scope} 以内（${note}）${extra}，当前目标是 ${relPath(cwd, target)}。\n`
     + loose
-    + '推演只写记录，不改仓库实现——要改实现请用「标准模式」新开一个会话。'
-    + `若确实需要在本会话写别处：由用户在宿主环境设 DSH_APICAL_UNLOCK=1，或在 apical-guard 行的 allowPaths 里放行该前缀。`
+    + '推演不写生产代码。要同会话实现，由用户在宿主环境设 DSH_APICAL_UNLOCK=1（或在 apical-guard 的 allowPaths 里放行项目目录）；要换实现会话，就用标准模式新开一个。'
 }
 
-/** Stable picture of every discussion root, so the banner only speaks on change. */
+// ── state banner ────────────────────────────────────────────────────────────
+
+/** Stable picture of the anchor files, so the banner only speaks on change. */
 function projectHash(cwd, base) {
   const roots = listRoots(cwd, base)
-  if (roots.length === 0) return `none:${resolve(cwd, base)}`
-  return roots
-    .map((root) => {
-      const check = lastCheck(root)
-      const tail = check === undefined ? '' : `#${check.ok ? 'ok' : 'no'}:${check.blockers.join(',')}:${check.warnings.length}`
-      return `${pulseKey(root)}${tail}`
-    })
-    .join('|')
+  let hash = 5381
+  const feed = (text) => {
+    for (let index = 0; index < text.length; index += 1) hash = ((hash * 33) ^ text.charCodeAt(index)) >>> 0
+  }
+  for (const root of roots) {
+    feed(root)
+    feed(readText(join(root, 'seed.md')) ?? '')
+    feed(readText(join(root, 'flow.md')) ?? '')
+  }
+  return `${roots.length}:${hash.toString(16)}`
 }
 
-/** One line: the core question, the derivation counters, the last check result. */
+/** One line: core question, current state, open gaps, boundary answers. */
 function bannerText(cwd, base) {
-  const found = discoverRoot(cwd, base)
-  if (found.kind === 'none') {
-    return `[apical-bud] 还没有讨论根：照 templates/seed.md 建 ${base}/<slug>/seed.md（先写「## 用户原话」与「## 核心问题」）；`
-      + '开工先读 map.md，没有就跑 apical_check action=map。'
-      + `写守卫只放行 ${base}/<slug>/ 以内。`
+  const roots = listRoots(cwd, base)
+  if (roots.length === 0) {
+    return `[顶芽] 还没有讨论根：照 templates/seed.md 建 ${base}/<slug>/seed.md（先写用户原话、核心问题、主链、边界），再照 templates/flow.md 建 flow.md。`
+      + `新会话先读现状再开口。写守卫只放行 ${base}/<slug>/ 以内。`
   }
-  const roots = found.kind === 'ambiguous' ? found.roots : [found.root]
-  const shown = roots.slice(0, 3)
-  const parts = shown.map((root) => {
+  const shown = roots.slice(0, 2).map((root) => {
     const pulse = treePulse(root)
-    if (pulse.kind === 'legacy') return `${pulse.slug}（旧形状：不检查、不拦）`
-    const check = lastCheck(root)
-    const checkText = check === undefined
-      ? '体检: 未运行（apical_check action=check）'
-      : check.ok
-        ? `体检: 齐 ✓${check.warnings.length > 0 ? `（${check.warnings.length} 警告）` : ''}`
-        : `体检: 缺 ${check.blockers.length} 件（${check.blockers.slice(0, 2).join('、')}）`
-    const question = pulse.coreQuestion === '' ? '（seed.md 里还没写）' : pulse.coreQuestion
-    const demand = pulse.demand && pulse.demand.declared > 0
-      ? ` · 核心 ${pulse.demand.core === '' ? '（还没选）' : pulse.demand.core}`
-        + `（检验条件 ${pulse.demand.conditions.length}${pulse.demand.conditionsIdle.length > 0 ? `，${pulse.demand.conditionsIdle.join('、')} 没人验` : ''}）`
-        + ` · 需求线 ${pulse.demand.declared}${pulse.demand.idle.length > 0 ? `（${pulse.demand.idle.join('、')} 未动）` : '（都有人推）'}`
-      : ''
-    const unresolved = pulse.unresolved && pulse.unresolved.points > 0
-      ? ` · 未定项 ${pulse.unresolved.total}${pulse.unresolved.rising ? '（在涨）' : ''}`
-      : ''
-    return `${pulse.slug} · 核心问题: ${question.length > 40 ? `${question.slice(0, 40)}…` : question}`
-      + ` · 推演节点 ${pulse.points.total}（进行中 ${pulse.points.open}/已结 ${pulse.points.closed}/悬置 ${pulse.points.paused}）`
-      + ` · 事实 ${pulse.facts}${demand}${unresolved} · 顶芽 ${pulse.model} · 选型 ${pulse.build} · ${checkText}`
+    if (pulse.kind === 'empty') return `${pulse.slug}（空目录）`
+    if (pulse.kind === 'legacy') return `${pulse.slug}（旧树：v1，只读，不迁移）`
+    if (pulse.kind === 'partial') return `${pulse.slug}（缺 seed.md 或 flow.md）`
+    const boundary = pulse.boundary.ok ? '齐' : `缺${pulse.boundary.missing.join('、')}`
+    return `${pulse.slug} · 核心问题: ${pulse.question} · 现状: ${pulse.state} · 缺口 ${pulse.gaps} · 边界 ${boundary}`
   })
-  const head = found.kind === 'ambiguous' ? `[apical-bud] ${roots.length} 个讨论根` : '[apical-bud]'
-  const more = roots.length > shown.length ? ` …还有 ${roots.length - shown.length} 个（apical_check action=trees）` : ''
-  return `${head} ${parts.join(' ｜ ')}${more} · 写范围 ${base}/<slug>/（推演不实现）`
+  const more = roots.length > shown.length ? ` …还有 ${roots.length - shown.length} 个` : ''
+  const head = roots.length > 1 ? `[顶芽] ${roots.length} 个树` : '[顶芽]'
+  return `${head} ${shown.join(' ｜ ')}${more} · 写范围 ${base}/<slug>/（推演不实现）`
+}
+
+/** A discussion root's one-line pulse, read off its two anchor files. */
+function treePulse(root) {
+  const slug = basename(root)
+  const seed = readText(join(root, 'seed.md'))
+  const flow = readText(join(root, 'flow.md'))
+  if (seed === undefined && flow === undefined) return { slug, kind: 'empty' }
+  if (seed === undefined) return { slug, kind: 'partial' }
+  if (flow === undefined) {
+    // A v1 tree has a seed and other v1 files but no flow.md; it is read-only.
+    const legacy = existsSync(join(root, 'facts.md')) || existsSync(join(root, 'derivation')) || existsSync(join(root, 'model.md'))
+    return { slug, kind: legacy ? 'legacy' : 'partial' }
+  }
+  const question = oneLine(sectionOf(seed, '核心问题') ?? '', 44) || '（还没写核心问题）'
+  const state = pickState(sectionOf(flow ?? '', '现状') ?? '') || '（还没有现状）'
+  return {
+    slug,
+    kind: 'v2',
+    question,
+    state,
+    gaps: countGaps(sectionOf(flow ?? '', '缺口') ?? ''),
+    boundary: boundaryStatus(sectionOf(seed, '边界') ?? ''),
+  }
+}
+
+/** The `停在` line if present, else the first content line of 现状. */
+function pickState(text) {
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter((line) => line !== '')
+  const stopped = lines.find((line) => line.includes('停在')) ?? lines[0]
+  return stopped === undefined ? '' : oneLine(stopped, 48)
+}
+
+/** Open gaps = non-empty bullets in the 缺口 section. */
+function countGaps(text) {
+  return text
+    .split(/\r?\n/)
+    .filter((line) => /^\s*(?:[-*]|\d+\.)\s+\S/.test(line))
+    .filter((line) => hasContent(line.replace(/^\s*(?:[-*]|\d+\.)\s+/, '')))
+    .length
+}
+
+/** Whether all three boundary answers carry content. */
+function boundaryStatus(text) {
+  const missing = []
+  for (const key of BOUNDARIES) {
+    const line = text.split(/\r?\n/).find((candidate) => candidate.includes(key))
+    if (line === undefined) {
+      missing.push(key)
+      continue
+    }
+    const rest = line.slice(line.indexOf(key) + key.length).replace(/^[：:\s*\-]+/, '').replace(/<!--[\s\S]*?-->/g, '')
+    const meaningful = rest.replace(/[。；;，,：:|\s*\-]/g, '')
+    if (meaningful.length < 2 || /^<.*>$/.test(meaningful)) missing.push(key)
+  }
+  return { ok: missing.length === 0, missing }
+}
+
+// ── small shared readers ────────────────────────────────────────────────────
+
+function readText(file) {
+  try {
+    return readFileSync(file, 'utf8')
+  } catch {
+    return undefined
+  }
+}
+
+/** Bodies of `## <title>`, up to the next heading. */
+function sectionOf(text, title) {
+  if (typeof text !== 'string') return undefined
+  const lines = text.split(/\r?\n/)
+  let start = -1
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = /^##\s+(.+?)\s*$/.exec(lines[index])
+    if (match === null) continue
+    if (start === -1) {
+      if (match[1].trim() === title) start = index + 1
+      continue
+    }
+    return lines.slice(start, index).join('\n')
+  }
+  return start === -1 ? undefined : lines.slice(start).join('\n')
+}
+
+function hasContent(text) {
+  if (typeof text !== 'string') return false
+  const flat = text.replace(/<!--[\s\S]*?-->/g, '').replace(/[\s>*#`\-|]/g, '')
+  return flat.length > 0 && !/^<.*>$/.test(flat)
+}
+
+/** First non-empty line, markdown markers stripped, truncated. */
+function oneLine(text, limit) {
+  const line = text.split(/\r?\n/).map((item) => item.trim()).find((item) => item !== '')
+  if (line === undefined) return ''
+  const clean = line.replace(/^(?:[-*]|\d+\.)\s+/, '').replace(/^>\s*/, '').replace(/^#+\s*/, '').trim()
+  return clean.length > limit ? `${clean.slice(0, limit)}…` : clean
+}
+
+function listRoots(cwd, base) {
+  const baseDir = resolve(cwd, base)
+  let entries
+  try {
+    entries = readdirSync(baseDir, { withFileTypes: true })
+  } catch {
+    return []
+  }
+  return entries
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
+    .map((entry) => join(baseDir, entry.name))
+    .sort()
+}
+
+function isInside(child, parent) {
+  const rel = relative(parent, child)
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
+}
+
+function relPath(cwd, target) {
+  const rel = relative(cwd, target)
+  return rel === '' ? '.' : rel
 }

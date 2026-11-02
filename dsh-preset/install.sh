@@ -16,23 +16,21 @@ dsh_home="${DSH_HOME:-$HOME/.dsh}"
 target="$dsh_home/.agent-presets/apical-bud"
 skill_target="$dsh_home/skills/apical-bud"
 
-if [[ ! -f "$skill_target/scripts/check.mjs" ]]; then
+if [[ ! -f "$skill_target/SKILL.md" ]]; then
   cat >&2 <<EOF
-提示：在 $skill_target 没找到 skill（scripts/check.mjs）。
-本 preset 的体检工具（apical_check）要调用 skill 的体检脚本才能校验讨论根；请先把本仓库的 skill 装好：
+提示：在 $skill_target 没找到 skill（SKILL.md）。
+本 preset 的 persona 第一句就是"读 skill 的 SKILL.md"，方法本体全在 skill 里；请先把仓库的 skill 部分装上：
   git clone <repo> "$skill_target"
-（或在该 preset 的 apical-check 行里配置 checkScript: <仓库>/scripts/check.mjs；
- 或设环境变量 APICAL_CHECK_SCRIPT 指向该文件。写守卫与横幅不依赖 skill，缺了也照常工作。）
+写守卫与状态横幅不依赖 skill，缺了也照常工作。
 EOF
 fi
 
 mkdir -p "$(dirname "$target")"
 rm -rf "$target"
-mkdir -p "$target/lib"
+mkdir -p "$target"
 cp "$source_dir/preset.yml" "$source_dir/agent.cordis.yml" \
-   "$source_dir/apical-check.mjs" "$source_dir/apical-guard.mjs" "$source_dir/selftest.mjs" \
+   "$source_dir/apical-guard.mjs" "$source_dir/smoke.mjs" \
    "$target/"
-cp "$source_dir/lib/apical-tree.mjs" "$target/lib/"
 if [[ -f "$source_dir/README.md" ]]; then
   cp "$source_dir/README.md" "$target/"
 fi
@@ -43,12 +41,9 @@ cat <<EOF
 下一步：
   1. 重启 DSH（或至少新开一个会话）让名单刷新；
   2. 新建会话时在 preset 选择器里选「顶芽模式」；
-  3. 自检（可选）：node "$target/selftest.mjs"
+  3. 自检（可选）：node "$target/smoke.mjs"
 
-工具：apical_check —— action=check 跑体检（缺件是硬拦，其余是警告）；
-      action=map 生成并回显 map.md；action=trees 列出项目里的全部讨论根。
-旋钮：$target/agent.cordis.yml 里 apical-check 行的 checkScript: <仓库>/scripts/check.mjs，
-      或环境变量 APICAL_CHECK_SCRIPT（旧名 APICAL_GATE_SCRIPT 仍作回退）。
-逃生阀：环境变量 DSH_APICAL_UNLOCK=1 可临时解除写守卫；
-        或在 apical-guard 行里用 allowPaths 放行额外可写路径前缀。
+这一版只有两个机制：写守卫（只放行 design/<slug>/，seed.md 的「用户原话」只追加）
+与每轮一行的状态横幅（核心问题、现状、缺口数、边界是否填齐）。
+同会话实现：在宿主环境设 DSH_APICAL_UNLOCK=1，或在 apical-guard 行的 allowPaths 里放行项目目录。
 EOF

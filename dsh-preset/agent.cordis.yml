@@ -1,141 +1,80 @@
-# The `apical-bud` agent preset: derive one need into an abstract concept model
-# BEFORE any implementation, instead of chatting about a plan.
+# The `apical-bud` (顶芽) agent preset: derive a need from the user's first
+# action into a data-flow picture, then build the smallest thing that runs it.
 #
-# This file is an AGENT-PLANE composition. The roster mounts it ONCE under a
-# standing scope; every session naming it joins by scope parentage, so the tools
-# and prompt sections registered here cover each joined agent while a session's
-# own state stays keyed per Session/Agent inside the plugins.
+# v2 is deliberately thin. The method lives in the skill (SKILL.md + three
+# references); this file carries only the always-on contract and the tool set:
+#   * PERSONA — the five priority layers, one line each; the "read SKILL.md
+#     first" line; the per-turn contract (one action or one gap, one question,
+#     write back only what the user accepted) and the resume recital. The method
+#     body has one home, the skill. A second hand-copy is a second thing to drift.
+#   * WRITE GUARD (apical-guard) — `write`/`edit` only inside a discussion root
+#     (`design/<slug>/…`), and `seed.md`'s `## 用户原话` append-only. v2 keeps
+#     both because they are what stops derivation from turning into
+#     implementation drift and history rewriting. Both are anti-slip, not a
+#     security boundary; `DSH_APICAL_UNLOCK=1` lifts them for one session.
+#   * STATE BANNER (apical-guard) — one line per user turn, read off `seed.md`
+#     and `flow.md`: core question, current state, open gaps, boundary answers.
+#     A long discussion compacts; remembered state is state that eventually gets
+#     remembered wrong.
 #
-# THE METHOD IS LIGHT NOW, so this assembly is thin. The skill fixes exactly two
-# things — how the files are organized, and how the words are used. What each
-# file holds lives in the skill's `references/check.md`; this file does not
-# repeat it (a second copy is a second thing to drift).
+# DELETED in v2, on purpose: the `apical_check` tool with its 66 KB check
+# script, the 47 KB selftest, and the generated `map.md`. The method's hard
+# items are now four (a seed with exactly one main chain, a flow with one
+# complete path, a filled boundary section, a fresh 现状 line) and can be read
+# by eye. A checker that costs more to maintain than it catches teaches people
+# to ignore it.
 #
-# There is no state.json, no stage machine, no advance / verdict, no round
-# minutes, no full re-judgement. Which files exist IS the progress: `apical_check
-# action=map` reads it back out so a new session can pick the thread up.
+# NOT MOUNTED: dsh-plan-mode (writing the record IS the work), goal tools (a
+# derivation has to stop and wait for the user's answer), workflow/ralph (they
+# fan out toward implementation), jobs (nothing long-running to collect here).
+# One subagent stays for research and for a red-team read of a settled picture.
 #
-# WHAT THIS PRESET DECIDES, and why each row exists:
-#   * Identity is a co-deriver who argues back — 共同推演者兼对手. The product is
-#     the derivation itself: the reasoning said in the conversation, plus the
-#     record in the files. The persona carries ONLY the always-on contract —
-#     the invariants, the write-back list and the resume recital, the reader
-#     assumption, and the wording rules that go wrong most often — then a hard
-#     line: read `SKILL.md` first. The method body has one home, the skill.
-#   * "Discussion does not implement" is MECHANISM here, not a request:
-#     `apical-guard` registers a monotonic tool guard that denies `write`/`edit`
-#     outside a discussion root (`design/<slug>/…` by default; a loose
-#     `design/notes.md` belongs to no tree and is refused for the same reason). It
-#     also keeps `seed.md`'s `## 用户原话` append-only: rewriting it would rewrite
-#     what the user actually said. Everything else about the tree is a convention
-#     that `scripts/check.mjs` reports on, never a gate.
-#   * `apical-check` registers `apical_check` (check / map / trees) and runs the
-#     skill's own `scripts/check.mjs`, so the portable artifact and this host
-#     share one implementation. It asks one hard question — are the component
-#     files there? — and reports everything else as a warning.
-#   * State is read off the files each turn: one banner line with the core
-#     question, the derivation-point counts, the fact count, the model and
-#     selection status, and the last check result. A long discussion compacts,
-#     and remembered state is state that eventually gets remembered wrong.
-#
-# DELETED with the stage machine, deliberately: the `advance` / `verdict` /
-# `bind` / `status` actions and the gate tool itself, the `state.json`
-# invariants, the session→tree binding, the "no new discussion document before
-# the user answered" guard, the round-minute bookkeeping, and the S3/S5/S6/S7
-# full re-judgement. Files are the RECORD of a derivation, not its medium:
-# writing one early is no longer a violation, and a project with several roots is
-# handled by naming the root (`apical_check root=…`), not by binding a session.
-#
-# NOT MOUNTED, on purpose:
-#   * `dsh-plan-mode` — it forbids file mutation, and writing the record IS part
-#     of the work (the write guard still keeps that writing inside `design/`).
-#   * `dsh-tool-goal` / `dsh-command-goal` — a goal auto-continues rounds; a
-#     derivation has to stop and wait for the user's answer.
-#   * `dsh-tool-workflow` / `dsh-tool-ralph` — those fan work out toward
-#     implementation. The one delegation kept here is a single subagent, for a
-#     red-team read of a model that looks settled.
-#   * `dsh-tool-jobs` — a discussion session has no long-running background work
-#     to collect; `bash` stays for read-only forensics and one-off research.
-#
-# A service row here MUST sit inside a group carrying an `isolate` realm
-# (process-global publishing collides across presets). This preset publishes no
-# service, so only the compaction group below needs one.
+# A service row MUST sit inside a group carrying an `isolate` realm; this
+# preset publishes no service, so only the compaction group needs one.
 
 # ── identity ────────────────────────────────────────────────────────────────
 
 # The preset's own persona, shadowing the deployment default for this agent.
 # `{{cwd}}` resolves from the agent's own workspace at render time; keep brace
-# syntax limited to registered variables — an unknown `{{name}}` fails the whole
-# prompt assembly.
-#
-# WHICH LINES SURVIVED, and why: only the rules that are true on every turn of
-# every derivation, and only ones that cannot wait for a file read. Everything
-# else — the five questions, the requirement lines, the experiment discipline,
-# what one point records — is in the skill, reached by the persona's first line.
-# A second hand-copy of the method is a second thing to drift: the skill once
-# gained a pointer to `references/writing.md` and the persona never did.
-#
-# `complete: false` keeps the harness identity and per-tool guidance, which this
-# preset still wants (the agent leans on fs/ask_user/skill tools). If a session
-# ever drifts toward implementation, the lever is `complete: true`: this text
-# would then be the entire system prompt.
-#
-# The text slot is spelled `prefix`: `dsh-persona` renamed it from `text` at
-# 0.1.3-alpha.2, and the newer schema REJECTS a row still passing `text`
-# (`$.prefix missing required value`), which fails the whole preset mount.
+# syntax limited to registered variables — an unknown `{{name}}` fails the
+# whole prompt assembly. The text slot is `prefix` (renamed from `text` in
+# 0.1.3-alpha.2; the newer schema rejects `text`).
 - id: persona
   name: '@deepseek-ai/dsh-persona'
   config:
     prefix: |-
-      你运行在「顶芽模式」：和一个把需求推演成抽象概念模型的用户共同推演，工作目录 {{cwd}}。你是共同推演者兼对手，产出是推演本身。本会话禁止写生产代码、禁止改仓库实现（读代码、跑只读检查、做一次性调研取证可以）。
+      你运行在「顶芽模式」：和一个要把需求推成最小实现的用户共同推演，工作目录 {{cwd}}。你是共同推演者兼对手，产出是推演本身，以及按动作链切出来的最小实现。
 
-      **开工第一件事：读 skill 的 `SKILL.md`**（默认装在 `~/.dsh/skills/apical-bud/`，或直接调 skill 工具），按它顶部的索引按需读 `references/`。**方法本体只在那里——下面只放每轮都必须记得的东西，不在这里抄第二份。**
+      **开工第一件事：读 skill 的 `SKILL.md`。** 下面只放每轮都必须记得的东西，方法本体只在那里。
 
-      ## 怎么说话
-      用户只读你的回复，不读文件。回复就是产品本身。
-      - 用"我"和"你"，像跟同事当面说话。日常回复一到五句。
-      - 一段说一件事。结论在前，来路放后一句。
-      - 要补的量、出处、限定写成另一句话，不塞进括号。
-      - 不用书面转折：然而、因此、综上、首先其次。
-      - 不用比喻。要讲机制就写机制。
-      - 术语第一次出现给个能算的说法，之后只说人话。
-      - 他要细节或要报告时，解除句数限制，完整给。
-      - 一轮只问一个要他回答的问题。
-      - 不知道就说不知道，去查。查不到就说查不到。
+      ## 优先级（冲突时高覆盖低，同级回来问）
+      L0 不可交易：不虚构、不替他拍板、不预设架构、不越边界、不把未验证说成已验证。
+      L1 范围：用户第一数据流（起点是他的动作，图上不留孤儿）、场景卡、边界三问。
+      L2 达成：动作链闭环，他每一步看得见，失败有出口。
+      L3 手段：任何「要自己写」的结论之前先查已有；覆盖与痛点两条都过才迁移，否则自研。
+      L4 精简：前面都满足后取工程量最小。
+      L5 记录与说话：只记必要、现状一行；一到五句、结论在前、不写公文。
 
-      ## 不迎合
-      他给的想法先当成待检验的命题，不当前提。前提错了，后面全错。
-      - 赞成也要给理由。给不出理由的"你说得对"，删掉。
-      - 他改方向时，说出这句话推翻了前面哪条结论。一条都没推翻，就问他为什么它能改方向。
-      - 我改了自己的结论，说明是被证据推翻，还是被他说服。后者要明说，别写成像推出来的。
-      - 不给"2–4 个选项 + 我的倾向"。给了，讨论就变成我出方案他盖章。
-      - 我的倾向要标成倾向，并写出反方最强的一条。
+      ## 每轮
+      一次只推一个动作或一个缺口，一次只问一个要他答的问题。没认下的不写文件；认下的当轮写回 seed、flow 与现状。
+      新会话或压缩之后：先读 `flow.md` 的「现状」，再用三句话复述——停在哪、上一轮定了什么、下一步做什么。
 
-      ## 角色划分
-      推演、结论、反例、提案、提问一律说在对话里。文件只记录已经发生的事：他说过的话、已经定下的结论，是留痕不是成品。写完文件，回复里再说一遍。"已写入 derivation/03-….md，你看一下"不算回答。提问写编号时必须同时给出人话内容。
-      文件默认没有人类读者，判据是接得上、读得少、付得少。
+      推演期不写生产代码。实现放在推演会话还是换标准会话，按工程量定，见 `SKILL.md` 的「实现」。
 
-      **这一层不跑实验。** 实验件产出到 `probe/`，他去标准模式会话跑，把结果带回来。没写杀判据的不算实验，算演示。
-
-      ## 每轮收工
-      核心恰好一条，未定项只减不增，定下的结论当轮写回文件。清单与细则见 `SKILL.md` 的「落定即落文件」。
-      新会话或压缩之后：读 `map.md` → 最后一个节点 → `model.md`，用三句话复述——停在哪、上一轮定了什么、下一步谈什么。
-
-# Project conventions still matter to a derivation (naming, existing decisions,
-# house style), but the full digest is a large injected block; half of standard's
-# budget keeps the interesting part and drops the noise.
+# Project conventions still matter (naming, existing decisions, house style); the
+# full digest is a large injected block, so half of standard's budget keeps the
+# interesting part and drops the noise.
 - id: agent-instructions
   name: '@deepseek-ai/dsh-agent-instructions'
   config:
     maxBytes: 32768
 
-# ── shell (read-only forensics and one-off research) ────────────────────────
+# ── shell (read-only forensics, research, and running the small implementation) ─
 
 # `shell-env` and the sandbox/approval stack stay in the HOST composition.
-# `bash` here grounds claims in facts: reading a repository's current state,
-# checking a dependency, running the skill's check script by hand. Writing
-# through it is forbidden by the persona and left to the sandbox policy, not by
-# this row.
+# `bash` grounds claims in facts and runs the slices a small implementation
+# needs; writing through it is forbidden by the persona and left to the sandbox
+# policy, not by this row.
 - id: tool-bash
   name: '@deepseek-ai/dsh-tool-bash'
   disabled: !!js process.platform === 'win32'
@@ -146,8 +85,8 @@
 
 # ── filesystem ──────────────────────────────────────────────────────────────
 
-# The record IS the deliverable: read/write/edit plus glob/grep over the
-# repository under discussion. The write guard keeps write/edit inside `design/`.
+# The record is `design/<slug>/`; the write guard keeps write/edit inside it
+# until the user lifts it for an in-session implementation.
 - id: tool-fs
   name: '@deepseek-ai/dsh-tool-fs'
 
@@ -159,36 +98,26 @@
 # ── skills ──────────────────────────────────────────────────────────────────
 
 # `apical-bud` is installed in the user skill root (<dshHome>/skills), so the
-# default root covers it and the method stays publishable as one folder. To make
-# this preset self-contained instead, copy the skill folder into `./skills/` here
-# and add `customSkillDirs` (see the shipped `cordis` preset).
+# default root covers it and the method stays publishable as one folder.
 - id: skill-filesystem
   name: '@deepseek-ai/dsh-skill-filesystem'
 
 - id: tool-skill
   name: '@deepseek-ai/dsh-tool-skill'
 
-# ── the check and the guard (preset-local plugins) ──────────────────────────
+# ── the guard and the banner (preset-local plugin) ──────────────────────────
 
-# Both register into THIS preset's layers of the host tool registry and publish
-# no service, so neither needs a realm. `apical-check` resolves the skill's
-# `scripts/check.mjs` at first use (`checkScript` overrides the path, and the
-# old `APICAL_GATE_SCRIPT` env name still works as a fallback); a missing skill
-# degrades that one tool to an actionable message while the guard and the banner
-# keep working. `apical-guard` needs no skill at all: it reads the tree directly.
-- id: apical-check
-  name: ./apical-check.mjs
-  config:
-    base: design
-    skillName: apical-bud
-
+# One plugin, two mechanisms: the monotonic write guard and the per-turn state
+# banner. It reads `seed.md` and `flow.md` directly; there is no check engine
+# and no generated map to keep in sync.
 - id: apical-guard
   name: ./apical-guard.mjs
   config:
     base: design
     banner: true
-    # Set DSH_APICAL_UNLOCK=1 in the host environment to lift the write guard for
-    # a session; `allowPaths` whitelists extra cwd-relative prefixes.
+    # Set DSH_APICAL_UNLOCK=1 in the host environment to lift the write guard
+    # for one session (the in-session implementation path); `allowPaths`
+    # whitelists extra cwd-relative prefixes for a long-lived project dir.
     allowPaths: []
 
 # ── compaction ──────────────────────────────────────────────────────────────
@@ -216,13 +145,11 @@
         headChars: 4096
         tailChars: 1024
 
-# ── delegation (red-team read only) ─────────────────────────────────────────
+# ── delegation (research and red-team reads) ────────────────────────────────
 
 # The `subagents` registry and its backends live in the HOST composition; this
-# row contributes the tool. One provider on purpose: the one delegation this
-# preset wants is an independent child that attacks a model looking settled, and
-# that child cannot ask the user questions — which is exactly why the derivation
-# itself must stay a top-level session.
+# row contributes the tool. The child cannot ask the user questions, which is
+# exactly why the derivation itself must stay a top-level session.
 - id: tool-subagent
   name: '@deepseek-ai/dsh-tool-subagent'
   config:
@@ -244,8 +171,8 @@
     allowParallelInProgress: false
 
 # The `web` service and its search provider stay in the host composition.
-# Search AND fetch: facts are what the derivation leans on, and a fact must be
-# read at its source rather than in a summary of a summary.
+# Research is a first-class step in v2 (check before building), so search AND
+# fetch are both on.
 - id: tool-web
   name: '@deepseek-ai/dsh-tool-web'
   config:
