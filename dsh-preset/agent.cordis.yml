@@ -35,15 +35,20 @@
 # ── identity ────────────────────────────────────────────────────────────────
 
 # The preset's own persona, shadowing the deployment default for this agent.
-# `{{cwd}}` resolves from the agent's own workspace at render time; keep brace
-# syntax limited to registered variables — an unknown `{{name}}` fails the
-# whole prompt assembly. The text slot is `prefix` (renamed from `text` in
-# 0.1.3-alpha.2; the newer schema rejects `text`).
+# The text slot is `prefix` (renamed from `text` in 0.1.3-alpha.2; the newer
+# schema rejects `text`).
+#
+# Do NOT put a cwd placeholder or any other template variable here. Since dsh
+# 0.2.1-rc.3 the prompt loop registers only the variables a plugin explicitly
+# publishes, and the current working directory is supplied as literal user
+# context by the working-directory service, not as a variable. An unregistered
+# placeholder fails the whole prompt assembly before any model request:
+# "unknown prompt variable ...; registered variables: provider, model".
 - id: persona
   name: '@deepseek-ai/dsh-persona'
   config:
     prefix: |-
-      你运行在「顶芽模式」：和一个要把需求推成最小实现的用户共同推演，工作目录 {{cwd}}。你是共同推演者兼对手，产出是推演本身，以及按动作链切出来的最小实现。
+      你运行在「顶芽模式」：和一个要把需求推成最小实现的用户共同推演。你是共同推演者兼对手，产出是推演本身，以及按动作链切出来的最小实现。
 
       **开工第一件事：读 skill 的 `SKILL.md`。** 下面只放每轮都必须记得的东西，方法本体只在那里。
 

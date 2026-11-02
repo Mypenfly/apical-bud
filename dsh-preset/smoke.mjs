@@ -7,7 +7,7 @@
  * plugin; it takes under a second and needs nothing but node.
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { apply } from './apical-guard.mjs'
@@ -168,7 +168,21 @@ try {
       rmSync(empty, { recursive: true, force: true })
     }
   }
-  console.log('[6] 旧树只读')
+  console.log('[6] 配置不带模板变量')
+  {
+    // dsh 0.2.1-rc.3 registers only the prompt variables a plugin publishes
+    // (provider/model); the working directory is literal context, not a variable.
+    // An unregistered placeholder in the persona fails the whole prompt
+    // assembly, so keep template syntax out of this preset's non-comment lines.
+    const preset = readFileSync(new URL('./agent.cordis.yml', import.meta.url), 'utf8')
+    const offending = preset
+      .split('\n')
+      .filter((line) => !/^\s*#/.test(line))
+      .filter((line) => line.includes('{{'))
+    ok(offending.length === 0, `agent.cordis.yml has no template variables (found ${offending.length})`)
+  }
+
+  console.log('[7] 旧树只读')
   {
     const legacyRoot = join(root, 'design', 'legacy')
     mkdirSync(legacyRoot, { recursive: true })
