@@ -25,7 +25,7 @@ Six layers, high to low. On conflict the higher layer wins; on a tie inside a la
 | Layer | Covers |
 |---|---|
 | L0 non-negotiable | honesty, no deciding for the user, no crossing boundaries |
-| L1 scope | user-first data flow, scenario card, three boundary answers |
+| L1 scope | user-first data flow, scenario card plus pressure card, three boundary answers |
 | L2 closure | the action chain closes; the user sees every step; failures have exits |
 | L3 means | check existing first; migrate only when both conditions pass, otherwise self-build |
 | L4 simplicity | second-order: smallest footprint after L1–L3 are met |
