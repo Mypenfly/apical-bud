@@ -200,15 +200,31 @@ try {
     // section, the need-line table, and the L1 line. If one of them stops
     // mentioning the pressure card, the method silently loses it at whichever
     // layer the model happens to read first — so assert all three.
-    const read = (p) => readFileSync(new URL(p, import.meta.url), 'utf8')
-    const flow = read('../references/flow.md')
-    const seedTemplate = read('../templates/seed.md')
-    const skill = read('../SKILL.md')
-    ok(flow.includes('### 压力卡') && flow.includes('| 升为需求线 |'), 'flow.md: 场景卡节有压力卡与分流表')
-    ok(['不要求通过', '边界三问', '作废'].every((k) => flow.includes(k)), 'flow.md: 三出口与「不要求通过」都在')
-    ok(flow.includes('攒成一摞'), 'flow.md: 偏离表能抓到「堆卡」')
-    ok(seedTemplate.includes('| 出自 |'), 'seed 模板: 需求线表有「出自」列')
-    ok(skill.includes('压力卡'), 'SKILL.md: L1 提到压力卡')
+    // An installed preset is a copy of dsh-preset/ only, so the docs may not sit
+    // beside it. Walk up looking for the corpus and skip loudly when it is
+    // absent: a silent pass here would claim coverage this copy cannot have.
+    const corpus = (() => {
+      for (let up = ''; up.length <= 12; up += '../') {
+        try {
+          readFileSync(new URL(`${up}references/flow.md`, import.meta.url))
+          return up
+        } catch {}
+      }
+      return null
+    })()
+    if (corpus === null) {
+      console.log('  – 跳过：这份 smoke 不在仓库内，找不到 references/')
+    } else {
+      const read = (p) => readFileSync(new URL(corpus + p, import.meta.url), 'utf8')
+      const flow = read('references/flow.md')
+      const seedTemplate = read('templates/seed.md')
+      const skill = read('SKILL.md')
+      ok(flow.includes('### 压力卡') && flow.includes('| 升为需求线 |'), 'flow.md: 场景卡节有压力卡与分流表')
+      ok(['不要求通过', '边界三问', '作废'].every((k) => flow.includes(k)), 'flow.md: 三出口与「不要求通过」都在')
+      ok(flow.includes('攒成一摞'), 'flow.md: 偏离表能抓到「堆卡」')
+      ok(seedTemplate.includes('| 出自 |'), 'seed 模板: 需求线表有「出自」列')
+      ok(skill.includes('压力卡'), 'SKILL.md: L1 提到压力卡')
+    }
   }
 } finally {
   rmSync(root, { recursive: true, force: true })
