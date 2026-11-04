@@ -1,4 +1,6 @@
 # 自检沙箱（运行时生成，非交付物）
 .selftest/
+# evotree 运行账本（理解/评审过程的留痕，非交付物）
+.evotree/
 *.tmp
 .DS_Store
